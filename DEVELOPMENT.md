@@ -34,19 +34,29 @@ docker compose logs -f postgres
 4) Backend Python environment
 
 # Create and activate a virtualenv (example using python -m venv)
+There are two supported flows to create and populate the backend virtualenv.
+
+Option A) Use the Makefile helper (non-interactive, CI-friendly):
+
+```fish
+# From repo root
+make backend-venv
+```
+
+This will create `apps/backend/.venv` and install `apps/backend/requirements.txt` using the venv's pip.
+
+Option B) Manual (fish shell):
+
+```fish
+cd apps/backend
 python -m venv .venv
 source .venv/bin/activate.fish
-# Install Python dependencies (the backend should provide requirements.txt)
-# cd into the backend app first
-cd apps/backend
-# If a requirements.txt exists
-if test -f requirements.txt
-  pip install -r requirements.txt
-else
-  echo "Add a requirements.txt in apps/backend with FastAPI and dependencies"
-end
-# return to repo root
+pip install --upgrade pip
+pip install -r requirements.txt
 cd -
+```
+
+If creating the venv fails on your system (some distros lack ensurepip), you can use a system Python or Dockerized workflow instead.
 
 5) Run package tests (example: core package)
 
@@ -69,7 +79,7 @@ cd apps/backend
 # activate virtualenv created earlier
 source ../.venv/bin/activate.fish
 # run uvicorn if app entrypoint is main:app
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8020
 cd -
 
 Notes & troubleshooting
