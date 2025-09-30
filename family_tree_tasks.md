@@ -5,18 +5,18 @@
 ### 0.1 Repository & Workspace Configuration
 - [x] Initialize Git repository with appropriate `.gitignore`
 - [x] Create root `package.json` with npm workspaces configuration
-- [ ] Set up workspace structure: `apps/`, `packages/`
-- [ ] Configure shared TypeScript config (`tsconfig.base.json`)
-- [ ] Configure shared ESLint config (`.eslintrc.js`)
-- [ ] Configure Prettier for code formatting
+- [x] Set up workspace structure: `apps/`, `packages/`
+- [x] Configure shared TypeScript config (`tsconfig.base.json`)
+- [x] Configure shared ESLint config (`.eslintrc.js`)
+- [x] Configure Prettier for code formatting
 - [ ] Set up commit hooks with Husky (optional)
-- [ ] Create `README.md` with project overview and setup instructions
+- [x] Create `README.md` with project overview and setup instructions
 
 ### 0.2 Development Environment
 - [ ] Document local development prerequisites (Node.js version, npm, Python)
-- [ ] Create `.env.example` files for frontend and backend
-- [ ] Set up Docker Compose for Postgres (optional but recommended)
-- [ ] Configure VS Code workspace settings (recommended extensions, settings)
+- [x] Create `.env.example` files for frontend and backend
+- [x] Set up Docker Compose for Postgres (optional but recommended)
+- [x] Configure VS Code workspace settings (recommended extensions, settings)
 
 ---
 
