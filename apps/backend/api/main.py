@@ -1,21 +1,27 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from . import db, models, schemas
-from typing import List
+from fastapi.staticfiles import StaticFiles
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+from . import members, auth, invites, trees, relationships, memberships, users
 
+# Load .env in development so env vars are available when running locally
+load_dotenv()
+
+# CORS configuration
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3050").split(",")
 
 app = FastAPI(title="Family Tree Backend (dev)")
 
-# Allow local frontend to call backend during development
+# Allow origins from env var
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 @app.get("/api/health")
 def health():
@@ -27,16 +33,16 @@ def hello():
     return {"message": "Hello from Family Tree backend (dev)"}
 
 
-@app.post('/api/members', response_model=schemas.MemberRead)
-def create_member(payload: schemas.MemberCreate, db_session: Session = Depends(db.get_db)):
-    member = models.Member(name=payload.name, email=payload.email, deceased=payload.deceased)
-    db_session.add(member)
-    db_session.commit()
-    db_session.refresh(member)
-    return member
+app.include_router(members.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(invites.router, prefix="/api")
+app.include_router(trees.router, prefix="/api")
+app.include_router(relationships.router, prefix="/api")
+app.include_router(memberships.router, prefix="/api")
+app.include_router(users.router)
 
-
-@app.get('/api/members', response_model=List[schemas.MemberRead])
-def list_members(skip: int = 0, limit: int = 100, db_session: Session = Depends(db.get_db)):
-    return db_session.query(models.Member).offset(skip).limit(limit).all()
+# Mount static files for avatar uploads
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "./uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
