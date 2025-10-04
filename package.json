@@ -10,10 +10,28 @@
     "dev": "npm -ws run dev",
     "test": "npm -ws run test",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "prepare": "husky install",
+    "husky:install": "husky install",
+    "lint-staged": "lint-staged"
   },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
+  },
+  "devDependencies": {
+    "husky": "^8.0.0",
+    "lint-staged": "^14.0.0",
+    "npm-run-all": "^4.1.5",
+    "eslint": "*",
+    "prettier": "*",
+    "eslint-config-prettier": "*",
+    "eslint-plugin-react": "*",
+    "eslint-plugin-react-hooks": "*",
+    "@typescript-eslint/parser": "*",
+    "@typescript-eslint/eslint-plugin": "*",
+    "eslint-plugin-jsx-a11y": "*",
+    "@commitlint/cli": "*",
+    "@commitlint/config-conventional": "*"
   }
 }
