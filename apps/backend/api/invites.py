@@ -14,9 +14,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import secrets
 import logging
+import pytz
 
 import models
 import schemas
@@ -85,7 +86,7 @@ def _check_custodian_access(
     if membership.role != "custodian":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only custodians can send invitations"
+            detail="Only custodians can send out invitations"
         )
     
     return tree
@@ -162,7 +163,7 @@ async def send_invite(
             models.Invite.tree_id == invite_data.tree_id,
             models.Invite.email == invite_data.email,
             models.Invite.accepted_at.is_(None),
-            models.Invite.expires_at > datetime.utcnow()
+            models.Invite.expires_at > datetime.now(timezone.utc).astimezone(pytz.timezone('Africa/Nairobi'))
         )
     ).first()
     
@@ -174,7 +175,7 @@ async def send_invite(
     
     # Generate token and create invite
     token = _generate_invite_token()
-    expires_at = datetime.utcnow() + timedelta(days=INVITE_EXPIRY_DAYS)
+    expires_at = datetime.now(timezone.utc).astimezone(pytz.timezone('Africa/Nairobi')) + timedelta(days=INVITE_EXPIRY_DAYS)
     
     invite = models.Invite(
         tree_id=invite_data.tree_id,
@@ -280,13 +281,13 @@ async def resend_invite(
         )
     
     # If expired, create new invite
-    if invite.expires_at < datetime.utcnow():
+    if invite.expires_at < datetime.now(timezone.utc).astimezone(pytz.timezone('Africa/Nairobi')):
         # Mark old invite as expired in logs
         logger.info(f"Creating new invite to replace expired invite {invite.id}")
         
         # Create new invite
         new_token = _generate_invite_token()
-        new_expires_at = datetime.utcnow() + timedelta(days=INVITE_EXPIRY_DAYS)
+        new_expires_at = datetime.now(timezone.utc).astimezone(pytz.timezone('Africa/Nairobi')) + timedelta(days=INVITE_EXPIRY_DAYS)
         
         new_invite = models.Invite(
             tree_id=invite.tree_id,
@@ -324,6 +325,8 @@ async def resend_invite(
     return invite
 
 
+#TODO:THIS NEEDS TO BE WRAPPED IN AUTH AS IT EXPOSES CRUCIAL INVITE DETAILS.
+#ONLY CUSTODIANS HAVE ACCESS TO THIS INFORMATION
 @router.get(
     "/invites/{token}",
     response_model=schemas.InviteDetail,

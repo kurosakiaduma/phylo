@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from . import members, auth, invites, trees, relationships, memberships, users
+from . import members, auth, invites, trees, relationships, memberships, users, avatars
 
 # Load .env in development so env vars are available when running locally
 load_dotenv()
@@ -40,6 +40,7 @@ app.include_router(trees.router, prefix="/api")
 app.include_router(relationships.router, prefix="/api")
 app.include_router(memberships.router, prefix="/api")
 app.include_router(users.router)
+app.include_router(avatars.router, prefix="/api")
 
 # Mount static files for avatar uploads
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "./uploads"))

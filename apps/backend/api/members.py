@@ -1,12 +1,17 @@
 """Member management endpoints for creating and managing family tree members."""
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 import logging
+import os
+import uuid
+from pathlib import Path
+from PIL import Image
+import io
 
 import models
 import schemas
@@ -14,6 +19,49 @@ from utils import db
 from utils.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
+
+# Configuration for member avatar uploads
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "./uploads/avatars"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+AVATAR_SIZE = (400, 400)  # Standard avatar size
+
+
+def sync_avatar_across_entities(email: str, avatar_url: Optional[str], db_session: Session, exclude_member_id: Optional[UUID] = None, exclude_user_id: Optional[UUID] = None):
+    """Sync avatar URL across user and all members with the same email.
+    
+    Args:
+        email: Email to sync avatars for
+        avatar_url: New avatar URL (or None to clear)
+        db_session: Database session
+        exclude_member_id: Member ID to exclude from sync (to avoid self-update)
+        exclude_user_id: User ID to exclude from sync (to avoid self-update)
+    """
+    if not email:
+        return
+    
+    # Update user with this email
+    user_query = db_session.query(models.User).filter(models.User.email == email)
+    if exclude_user_id:
+        user_query = user_query.filter(models.User.id != exclude_user_id)
+    
+    user = user_query.first()
+    if user:
+        user.avatar_url = avatar_url
+        logger.info(f"Synced avatar for user {user.id} with email {email}")
+    
+    # Update all members with this email
+    member_query = db_session.query(models.Member).filter(models.Member.email == email)
+    if exclude_member_id:
+        member_query = member_query.filter(models.Member.id != exclude_member_id)
+    
+    members = member_query.all()
+    for member in members:
+        member.avatar_url = avatar_url
+        logger.info(f"Synced avatar for member {member.id} with email {email}")
+    
+    db_session.commit()
 
 router = APIRouter(tags=["Members"])
 
@@ -153,10 +201,6 @@ def _validate_member_against_settings(
     """
     # Parse tree settings
     settings = schemas.TreeSettings(**tree.settings_json) if tree.settings_json else schemas.TreeSettings()
-    
-    # For now, basic validation - gender is optional and flexible
-    # In the future, we might add more sophisticated validation
-    # based on tree settings (e.g., required fields, custom validations)
     
     # Validate gender if provided (optional validation)
     if member_data.gender:
@@ -337,6 +381,7 @@ async def create_member(
         tree_id=tree_id,
         name=member_data.name,
         email=member_data.email,
+        avatar_url=member_data.avatar_url,
         dob=member_data.dob,
         gender=member_data.gender,
         deceased=member_data.deceased,
@@ -383,7 +428,9 @@ async def update_member(
     member, _ = _check_member_access(member_id, current_user, db_session, required_role="custodian")
     
     # Validate DOB format if provided
-    if member_data.dob is not None:
+    logger.info(f'Member data: {member_data}')
+    print(f'Member data: {member_data}')
+    if member_data.dob:
         try:
             datetime.fromisoformat(member_data.dob.replace('Z', '+00:00'))
         except ValueError:
@@ -453,3 +500,193 @@ async def delete_member(
     logger.info(f"Deleted member {member_id} by user {current_user.id}")
     
     return None
+
+
+@router.post('/members/{member_id}/avatar', status_code=status.HTTP_200_OK)
+async def upload_member_avatar(
+    member_id: UUID,
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(get_current_user),
+    db_session: Session = Depends(db.get_db)
+):
+    """Upload and set member avatar image.
+    
+    Requires custodian role.
+    Accepts image files (jpg, png, gif, webp) up to 5MB.
+    Images are automatically resized to 400x400 pixels.
+    
+    Args:
+        member_id: Member ID
+        file: Image file to upload
+        current_user: Authenticated user (must be custodian)
+        db_session: Database session
+        
+    Returns:
+        Success message with avatar URL
+        
+    Raises:
+        HTTPException 404: Member not found
+        HTTPException 403: Access denied or insufficient permissions
+        HTTPException 400: Invalid file type or size
+        HTTPException 500: Upload failed
+    """
+    # Check custodian access
+    member, _ = _check_member_access(member_id, current_user, db_session, required_role="custodian")
+    
+    try:
+        # Validate file size
+        if file.size and file.size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB"
+            )
+        
+        # Validate file extension
+        if file.filename:
+            file_ext = Path(file.filename).suffix.lower()
+            if file_ext not in ALLOWED_EXTENSIONS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No filename provided"
+            )
+        
+        # Read and validate image
+        contents = await file.read()
+        
+        try:
+            # Open and validate image
+            image = Image.open(io.BytesIO(contents))
+            
+            # Convert to RGB if necessary (handles RGBA, P mode, etc.)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Resize to standard avatar size
+            image = image.resize(AVATAR_SIZE, Image.Resampling.LANCZOS)
+            
+        except Exception as e:
+            logger.error(f"Error processing image: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid image file"
+            )
+        
+        # Generate unique filename
+        unique_id = str(uuid.uuid4())
+        filename = f"{member_id}_{unique_id}.jpg"
+        file_path = UPLOAD_DIR / filename
+        
+        # Delete old avatar if exists
+        if member.avatar_url:
+            old_filename = Path(member.avatar_url).name
+            old_file_path = UPLOAD_DIR / old_filename
+            if old_file_path.exists():
+                old_file_path.unlink()
+                logger.info(f"Deleted old avatar: {old_filename}")
+        
+        # Save processed image
+        image.save(file_path, "JPEG", quality=85, optimize=True)
+        
+        # Update member avatar URL
+        avatar_url = f"/uploads/avatars/{filename}"
+        member.avatar_url = avatar_url
+        member.updated_by = current_user.id
+        member.updated_at = datetime.utcnow()
+        
+        # Sync avatar across all entities with the same email
+        if member.email:
+            sync_avatar_across_entities(member.email, avatar_url, db_session, exclude_member_id=member.id)
+        
+        db_session.commit()
+        db_session.refresh(member)
+        
+        logger.info(f"Avatar uploaded for member {member_id}: {filename}")
+        
+        return {
+            "status": "ok",
+            "message": "Avatar uploaded successfully",
+            "avatar_url": avatar_url
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading member avatar: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload avatar"
+        )
+
+
+@router.delete('/members/{member_id}/avatar', status_code=status.HTTP_200_OK)
+async def delete_member_avatar(
+    member_id: UUID,
+    current_user: models.User = Depends(get_current_user),
+    db_session: Session = Depends(db.get_db)
+):
+    """Delete member avatar image.
+    
+    Requires custodian role.
+    Removes the avatar file from storage and clears the avatar_url field.
+    
+    Args:
+        member_id: Member ID
+        current_user: Authenticated user (must be custodian)
+        db_session: Database session
+        
+    Returns:
+        Success message
+        
+    Raises:
+        HTTPException 404: Member not found or no avatar
+        HTTPException 403: Access denied or insufficient permissions
+        HTTPException 500: Delete failed
+    """
+    # Check custodian access
+    member, _ = _check_member_access(member_id, current_user, db_session, required_role="custodian")
+    
+    if not member.avatar_url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member has no avatar to delete"
+        )
+    
+    try:
+        # Delete file from storage
+        filename = Path(member.avatar_url).name
+        file_path = UPLOAD_DIR / filename
+        
+        if file_path.exists():
+            file_path.unlink()
+            logger.info(f"Deleted avatar file: {filename}")
+        
+        # Clear avatar URL from database
+        member.avatar_url = None
+        member.updated_by = current_user.id
+        member.updated_at = datetime.utcnow()
+        
+        # Sync avatar deletion across all entities with the same email
+        if member.email:
+            sync_avatar_across_entities(member.email, None, db_session, exclude_member_id=member.id)
+        
+        db_session.commit()
+        db_session.refresh(member)
+        
+        logger.info(f"Avatar deleted for member {member_id}")
+        
+        return {
+            "status": "ok",
+            "message": "Avatar deleted successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error deleting member avatar: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete avatar"
+        )

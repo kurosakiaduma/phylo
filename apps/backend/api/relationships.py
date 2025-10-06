@@ -10,6 +10,7 @@ import logging
 
 import models
 import schemas
+from schemas import RelationshipComputeResponse
 from utils import db
 from utils.dependencies import get_current_user
 
@@ -665,25 +666,6 @@ async def remove_child(
     
     return None
 
-
-# Relationship Computation Schema
-class RelationshipComputeResponse(schemas.BaseModel):
-    """Response for relationship computation between two members."""
-    from_member_id: UUID
-    from_member_name: str
-    to_member_id: UUID
-    to_member_name: str
-    relationship: str
-    path: List[UUID]
-    path_names: List[str]
-    
-    if schemas.PYDANTIC_V2:
-        model_config = schemas.ConfigDict(from_attributes=True)
-    else:
-        class Config:
-            orm_mode = True
-
-
 def _build_relationship_graph(tree_id: UUID, db_session: Session) -> dict:
     """Build an adjacency graph of all relationships in a tree.
     
@@ -764,6 +746,76 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
+def _get_gender_specific_relationship(base_relationship: str, member: models.Member) -> str:
+    """Convert generic relationship to gender-specific if possible."""
+    if not member.gender:
+        return base_relationship
+    
+    gender = member.gender.lower()
+    rel = base_relationship.lower()
+    
+    # Convert generic relationships to gender-specific ones
+    if rel == "parent":
+        return "father" if gender == "male" else "mother" if gender == "female" else "parent"
+    elif rel == "child":
+        return "son" if gender == "male" else "daughter" if gender == "female" else "child"
+    elif rel == "sibling":
+        return "brother" if gender == "male" else "sister" if gender == "female" else "sibling"
+    elif rel == "half-sibling":
+        return "half-brother" if gender == "male" else "half-sister" if gender == "female" else "half-sibling"
+    elif rel == "grandparent":
+        return "grandfather" if gender == "male" else "grandmother" if gender == "female" else "grandparent"
+    elif rel == "grandchild":
+        return "grandson" if gender == "male" else "granddaughter" if gender == "female" else "grandchild"
+    elif rel == "aunt/uncle":
+        return "uncle" if gender == "male" else "aunt" if gender == "female" else "aunt/uncle"
+    elif rel == "niece/nephew":
+        return "nephew" if gender == "male" else "niece" if gender == "female" else "niece/nephew"
+    elif rel == "cousin-aunt/uncle":
+        return "cousin-uncle" if gender == "male" else "cousin-aunt" if gender == "female" else "cousin-aunt/uncle"
+    elif rel == "cousin-niece/nephew":
+        return "cousin-nephew" if gender == "male" else "cousin-niece" if gender == "female" else "cousin-niece/nephew"
+    
+    # Handle great- prefixed relationships
+    elif "great-" in rel:
+        if rel.endswith("grandparent"):
+            prefix = rel.replace("grandparent", "")
+            return f"{prefix}grandfather" if gender == "male" else f"{prefix}grandmother" if gender == "female" else rel
+        elif rel.endswith("grandchild"):
+            prefix = rel.replace("grandchild", "")
+            return f"{prefix}grandson" if gender == "male" else f"{prefix}granddaughter" if gender == "female" else rel
+        elif rel.endswith("aunt/uncle"):
+            prefix = rel.replace("aunt/uncle", "")
+            return f"{prefix}uncle" if gender == "male" else f"{prefix}aunt" if gender == "female" else rel
+        elif rel.endswith("niece/nephew"):
+            prefix = rel.replace("niece/nephew", "")
+            return f"{prefix}nephew" if gender == "male" else f"{prefix}niece" if gender == "female" else rel
+    
+    # Handle in-law relationships
+    elif "-in-law" in rel:
+        if "parent" in rel:
+            return "father-in-law" if gender == "male" else "mother-in-law" if gender == "female" else rel
+        elif "child" in rel:
+            return "son-in-law" if gender == "male" else "daughter-in-law" if gender == "female" else rel
+        elif "sibling" in rel:
+            return "brother-in-law" if gender == "male" else "sister-in-law" if gender == "female" else rel
+        elif "grandparent" in rel:
+            return "grandfather-in-law" if gender == "male" else "grandmother-in-law" if gender == "female" else rel
+        elif "aunt" in rel or "uncle" in rel:
+            return "uncle-in-law" if gender == "male" else "aunt-in-law" if gender == "female" else rel
+    
+    # Handle step relationships
+    elif "step-" in rel:
+        if "parent" in rel:
+            return "step-father" if gender == "male" else "step-mother" if gender == "female" else rel
+        elif "child" in rel:
+            return "step-son" if gender == "male" else "step-daughter" if gender == "female" else rel
+        elif "sibling" in rel:
+            return "step-brother" if gender == "male" else "step-sister" if gender == "female" else rel
+    
+    return base_relationship
+
+
 def _compute_relationship(
     from_id: UUID,
     to_id: UUID,
@@ -808,27 +860,29 @@ def _compute_relationship(
     ancestors_from = _get_ancestors_and_distance(from_id, graph)
     ancestors_to = _get_ancestors_and_distance(to_id, graph)
     
-    # Check if to_id is an ancestor of from_id (descendant relationship)
+    # Check if to_id is an ancestor of from_id (from_id is descendant of to_id)
+    # This means from_id's relationship TO to_id is child/grandchild/etc.
     if to_id in ancestors_from:
         distance = ancestors_from[to_id]
         if distance == 1:
-            return "parent", [from_id, to_id]
+            return "child", [from_id, to_id]  # from_id is child of to_id
         elif distance == 2:
-            return "grandparent", [from_id] + _find_path_through_parents(from_id, to_id, parents, distance)
+            return "grandchild", [from_id] + _find_path_through_parents(from_id, to_id, parents, distance)
         else:
             prefix = "great-" * (distance - 2)
-            return f"{prefix}grandparent", [from_id] + _find_path_through_parents(from_id, to_id, parents, distance)
+            return f"{prefix}grandchild", [from_id] + _find_path_through_parents(from_id, to_id, parents, distance)
     
-    # Check if from_id is an ancestor of to_id (ancestor relationship)
+    # Check if from_id is an ancestor of to_id (to_id is descendant of from_id)
+    # This means from_id's relationship TO to_id is parent/grandparent/etc.
     if from_id in ancestors_to:
         distance = ancestors_to[from_id]
         if distance == 1:
-            return "child", [from_id, to_id]
+            return "parent", [from_id, to_id]  # from_id is parent of to_id
         elif distance == 2:
-            return "grandchild", [from_id] + _find_path_through_children(from_id, to_id, children, distance)
+            return "grandparent", [from_id] + _find_path_through_children(from_id, to_id, children, distance)
         else:
             prefix = "great-" * (distance - 2)
-            return f"{prefix}grandchild", [from_id] + _find_path_through_children(from_id, to_id, children, distance)
+            return f"{prefix}grandparent", [from_id] + _find_path_through_children(from_id, to_id, children, distance)
     
     # Find closest common ancestor for collateral relations
     closest_common_ancestor = None
@@ -896,9 +950,13 @@ def _compute_relationship(
         if to_id in parents.get(spouse_id, []):
             return "parent-in-law", [from_id, spouse_id, to_id]
         
-        # Spouse's child = child-in-law
+        # Spouse's child = child-in-law (step-child)
         if to_id in children.get(spouse_id, []):
-            return "child-in-law", [from_id, spouse_id, to_id]
+            # Check if from_id is also a parent of to_id (biological child vs step-child)
+            if to_id not in children.get(from_id, []):
+                return "step-child", [from_id, spouse_id, to_id]
+            else:
+                return "child", [from_id, to_id]  # Biological child
         
         # Spouse's sibling = sibling-in-law
         spouse_ancestors = _get_ancestors_and_distance(spouse_id, graph)
@@ -910,58 +968,81 @@ def _compute_relationship(
                 if spouse_ancestors[ancestor_id] == 1 and to_ancestors[ancestor_id] == 1:
                     return "sibling-in-law", [from_id, spouse_id, ancestor_id, to_id]
     
+    # Check reverse in-law relationships (child's spouse = child-in-law)
+    for child_id in children.get(from_id, []):
+        if to_id in spouses.get(child_id, []):
+            return "child-in-law", [from_id, child_id, to_id]
+    
+    # Check for in-law relationships first (before blood relations)
+    in_law_result = _check_in_law_relationships(from_id, to_id, graph)
+    if in_law_result:
+        return in_law_result
+    
+    # Check for cultural/nuanced relationships (parent's cousin as aunt/uncle)
+    cultural_result = _check_cultural_relationships(from_id, to_id, graph)
+    if cultural_result:
+        return cultural_result
+    
+
+    
     # If no relationship found
     return "unknown", [from_id, to_id]
 
 
 def _find_path_through_parents(from_id: UUID, to_id: UUID, parents: dict, max_depth: int) -> List[UUID]:
-    """Find path from from_id to to_id going up through parents."""
-    path = []
-    current = from_id
+    """Find path from from_id to to_id going up through parents using BFS."""
+    if max_depth <= 0:
+        return []
     
-    for _ in range(max_depth):
-        parent_list = parents.get(current, [])
-        if not parent_list:
-            break
+    # Use BFS to find the shortest path
+    queue = [(from_id, [])]
+    visited = {from_id}
+    
+    while queue:
+        current_id, path = queue.pop(0)
         
-        # Try to find parent that leads to to_id
-        for parent_id in parent_list:
-            if parent_id == to_id:
-                path.append(parent_id)
-                return path
+        if len(path) >= max_depth:
+            continue
             
-            # Use first parent that exists (simplified path finding)
-            if parent_id in parents or parent_id == to_id:
-                path.append(parent_id)
-                current = parent_id
-                break
+        for parent_id in parents.get(current_id, []):
+            new_path = path + [parent_id]
+            
+            if parent_id == to_id:
+                return new_path
+            
+            if parent_id not in visited and len(new_path) < max_depth:
+                visited.add(parent_id)
+                queue.append((parent_id, new_path))
     
-    return path
+    return []
 
 
 def _find_path_through_children(from_id: UUID, to_id: UUID, children: dict, max_depth: int) -> List[UUID]:
-    """Find path from from_id to to_id going down through children."""
-    path = []
-    current = from_id
+    """Find path from from_id to to_id going down through children using BFS."""
+    if max_depth <= 0:
+        return []
     
-    for _ in range(max_depth):
-        child_list = children.get(current, [])
-        if not child_list:
-            break
+    # Use BFS to find the shortest path
+    queue = [(from_id, [])]
+    visited = {from_id}
+    
+    while queue:
+        current_id, path = queue.pop(0)
         
-        # Try to find child that leads to to_id
-        for child_id in child_list:
-            if child_id == to_id:
-                path.append(child_id)
-                return path
+        if len(path) >= max_depth:
+            continue
             
-            # Use first child that exists (simplified path finding)
-            if child_id in children or child_id == to_id:
-                path.append(child_id)
-                current = child_id
-                break
+        for child_id in children.get(current_id, []):
+            new_path = path + [child_id]
+            
+            if child_id == to_id:
+                return new_path
+            
+            if child_id not in visited and len(new_path) < max_depth:
+                visited.add(child_id)
+                queue.append((child_id, new_path))
     
-    return path
+    return []
 
 
 @router.get(
@@ -1058,12 +1139,23 @@ async def compute_relationship(
     # Compute relationship
     relationship_label, path = _compute_relationship(from_member, to_member, graph)
     
+    # Convert to gender-specific relationship if possible
+    # Use from_member's gender since the relationship describes from_member's role
+    gender_specific_relationship = _get_gender_specific_relationship(relationship_label, from_member_obj)
+    
+    # Debug logging for gender-specific relationships
+    if relationship_label != gender_specific_relationship:
+        logger.info(
+            f"Gender conversion: {relationship_label} -> {gender_specific_relationship} "
+            f"(based on {from_member_obj.name}'s gender: {from_member_obj.gender})"
+        )
+    
     # Get member names for path
     path_names = [graph["members"][member_id].name for member_id in path]
     
     logger.info(
         f"Computed relationship in tree {tree.name}: "
-        f"{from_member_obj.name} -> {to_member_obj.name} = {relationship_label}"
+        f"{from_member_obj.name} -> {to_member_obj.name} = {gender_specific_relationship}"
     )
     
     return RelationshipComputeResponse(
@@ -1071,7 +1163,203 @@ async def compute_relationship(
         from_member_name=from_member_obj.name,
         to_member_id=to_member,
         to_member_name=to_member_obj.name,
-        relationship=relationship_label,
+        relationship=gender_specific_relationship,
         path=path,
         path_names=path_names
     )
+
+
+def _check_in_law_relationships(from_id: UUID, to_id: UUID, graph: dict) -> Optional[tuple[str, List[UUID]]]:
+    """Check for in-law relationships through spouse connections."""
+    spouses = graph["spouses"]
+    parents = graph["parents"]
+    children = graph["children"]
+    
+    # Check if from_id's parent is married to to_id (step-parent relationship)
+    for parent_id in parents.get(from_id, []):
+        if to_id in spouses.get(parent_id, []) and to_id not in parents.get(from_id, []):
+            return "step-parent", [from_id, parent_id, to_id]
+    
+    # Check if to_id's parent is married to from_id (step-child relationship)
+    for parent_id in parents.get(to_id, []):
+        if from_id in spouses.get(parent_id, []) and from_id not in parents.get(to_id, []):
+            return "step-child", [from_id, parent_id, to_id]
+    
+    # Through from_id's spouses
+    for spouse_id in spouses.get(from_id, []):
+        # Spouse's parent = parent-in-law
+        if to_id in parents.get(spouse_id, []):
+            return "parent-in-law", [from_id, spouse_id, to_id]
+        
+        # Spouse's child = step-child (if not biological child)
+        if to_id in children.get(spouse_id, []):
+            if to_id not in children.get(from_id, []):
+                return "step-child", [from_id, spouse_id, to_id]
+        
+        # Spouse's sibling = sibling-in-law
+        spouse_ancestors = _get_ancestors_and_distance(spouse_id, graph)
+        to_ancestors = _get_ancestors_and_distance(to_id, graph)
+        
+        # Check if they share a parent (are siblings)
+        for ancestor_id in spouse_ancestors:
+            if ancestor_id in to_ancestors:
+                if spouse_ancestors[ancestor_id] == 1 and to_ancestors[ancestor_id] == 1:
+                    return "sibling-in-law", [from_id, spouse_id, ancestor_id, to_id]
+    
+    # Check reverse in-law relationships
+    # Child's spouse = child-in-law
+    for child_id in children.get(from_id, []):
+        if to_id in spouses.get(child_id, []):
+            return "child-in-law", [from_id, child_id, to_id]
+    
+    return None
+
+
+def _check_cultural_relationships(from_id: UUID, to_id: UUID, graph: dict) -> Optional[tuple[str, List[UUID]]]:
+    """Check for cultural/nuanced relationships like parent's cousin being an aunt/uncle.
+    
+    In many cultures, certain relationships are treated as closer than their technical
+    genealogical distance would suggest. For example:
+    - Parent's cousin is often called "aunt" or "uncle"
+    - Parent's close friend might be called "aunt" or "uncle" (not implemented here)
+    - Cousin's spouse might be called "cousin-in-law"
+    """
+    parents = graph["parents"]
+    spouses = graph["spouses"]
+    
+    # Check if to_id is a cousin of from_id's parents (making them an honorary aunt/uncle)
+    for parent_id in parents.get(from_id, []):
+        parent_relationship = _compute_basic_blood_relationship(parent_id, to_id, graph)
+        if parent_relationship:
+            rel_type, _ = parent_relationship
+            rel_lower = rel_type.lower()
+            
+            # Parent's cousin = cousin-aunt/uncle (cultural relationship)
+            if "cousin" in rel_lower:
+                return f"cousin-aunt/uncle", [from_id, parent_id, to_id]
+            
+            # Parent's sibling's spouse = aunt/uncle-in-law
+            # This is handled through the spouse's sibling logic, but we can add cultural nuance
+            if "sibling-in-law" in rel_lower:
+                return "aunt/uncle-in-law", [from_id, parent_id, to_id]
+    
+    # Check reverse: if from_id is a cousin of to_id's parents
+    for parent_id in parents.get(to_id, []):
+        parent_relationship = _compute_basic_blood_relationship(from_id, parent_id, graph)
+        if parent_relationship:
+            rel_type, _ = parent_relationship
+            rel_lower = rel_type.lower()
+            
+            if "cousin" in rel_lower:
+                return f"cousin-niece/nephew", [from_id, parent_id, to_id]
+    
+    # Check for cousin-in-law relationships (cousin's spouse)
+    # First, check if from_id and to_id are related through a cousin relationship
+    basic_relationship = _compute_basic_blood_relationship(from_id, to_id, graph)
+    if basic_relationship:
+        rel_type, _ = basic_relationship
+        if "cousin" in rel_type.lower():
+            # Check if one is married to the other's blood cousin
+            for spouse_id in spouses.get(from_id, []):
+                spouse_relationship = _compute_basic_blood_relationship(spouse_id, to_id, graph)
+                if spouse_relationship and "cousin" in spouse_relationship[0].lower():
+                    return f"cousin-in-law", [from_id, spouse_id, to_id]
+    
+    return None
+
+
+def _compute_basic_blood_relationship(from_id: UUID, to_id: UUID, graph: dict) -> Optional[tuple[str, List[UUID]]]:
+    """Compute basic blood relationship without cultural nuances or in-law complications.
+    
+    This is used as a helper for cultural relationship detection.
+    """
+    if from_id == to_id:
+        return "self", [from_id]
+    
+    parents = graph["parents"]
+    children = graph["children"]
+    
+    # Direct relations
+    if to_id in children.get(from_id, []):
+        return "parent", [from_id, to_id]
+    
+    if to_id in parents.get(from_id, []):
+        return "child", [from_id, to_id]
+    
+    # Get ancestors with distances for both members
+    ancestors_from = _get_ancestors_and_distance(from_id, graph)
+    ancestors_to = _get_ancestors_and_distance(to_id, graph)
+    
+    # Check if to_id is an ancestor of from_id
+    if to_id in ancestors_from:
+        distance = ancestors_from[to_id]
+        if distance == 1:
+            return "parent", [from_id, to_id]
+        elif distance == 2:
+            return "grandparent", [from_id, to_id]
+        else:
+            prefix = "great-" * (distance - 2)
+            return f"{prefix}grandparent", [from_id, to_id]
+    
+    # Check if from_id is an ancestor of to_id
+    if from_id in ancestors_to:
+        distance = ancestors_to[from_id]
+        if distance == 1:
+            return "child", [from_id, to_id]
+        elif distance == 2:
+            return "grandchild", [from_id, to_id]
+        else:
+            prefix = "great-" * (distance - 2)
+            return f"{prefix}grandchild", [from_id, to_id]
+    
+    # Find closest common ancestor for collateral relations
+    closest_common_ancestor = None
+    dist_from = -1
+    dist_to = -1
+    
+    for ancestor_id, d_from in ancestors_from.items():
+        if ancestor_id in ancestors_to:
+            d_to = ancestors_to[ancestor_id]
+            if closest_common_ancestor is None or (d_from + d_to) < (dist_from + dist_to):
+                closest_common_ancestor = ancestor_id
+                dist_from = d_from
+                dist_to = d_to
+    
+    if closest_common_ancestor:
+        # Siblings
+        if dist_from == 1 and dist_to == 1:
+            return "sibling", [from_id, closest_common_ancestor, to_id]
+        
+        # Aunt/Uncle
+        if dist_from == 1 and dist_to > 1:
+            if dist_to == 2:
+                return "aunt/uncle", [from_id, closest_common_ancestor, to_id]
+            else:
+                prefix = "great-" * (dist_to - 2)
+                return f"{prefix}aunt/uncle", [from_id, closest_common_ancestor, to_id]
+        
+        # Niece/Nephew
+        if dist_to == 1 and dist_from > 1:
+            if dist_from == 2:
+                return "niece/nephew", [from_id, closest_common_ancestor, to_id]
+            else:
+                prefix = "great-" * (dist_from - 2)
+                return f"{prefix}niece/nephew", [from_id, closest_common_ancestor, to_id]
+        
+        # Cousins
+        if dist_from >= 2 and dist_to >= 2:
+            cousin_level = min(dist_from, dist_to) - 1
+            removal = abs(dist_from - dist_to)
+            
+            ordinal_str = _ordinal(cousin_level)
+            
+            if removal == 0:
+                return f"{ordinal_str} cousin", [from_id, closest_common_ancestor, to_id]
+            elif removal == 1:
+                return f"{ordinal_str} cousin, once removed", [from_id, closest_common_ancestor, to_id]
+            elif removal == 2:
+                return f"{ordinal_str} cousin, twice removed", [from_id, closest_common_ancestor, to_id]
+            else:
+                return f"{ordinal_str} cousin, {removal} times removed", [from_id, closest_common_ancestor, to_id]
+    
+    return None

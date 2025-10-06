@@ -14,6 +14,8 @@ import models
 import schemas
 from utils import db
 from utils.dependencies import get_current_user
+from typing import Optional
+from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,42 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 AVATAR_SIZE = (400, 400)  # Standard avatar size
+
+
+def sync_avatar_across_entities(email: str, avatar_url: Optional[str], db_session: Session, exclude_member_id: Optional[UUID] = None, exclude_user_id: Optional[UUID] = None):
+    """Sync avatar URL across user and all members with the same email.
+    
+    Args:
+        email: Email to sync avatars for
+        avatar_url: New avatar URL (or None to clear)
+        db_session: Database session
+        exclude_member_id: Member ID to exclude from sync (to avoid self-update)
+        exclude_user_id: User ID to exclude from sync (to avoid self-update)
+    """
+    if not email:
+        return
+    
+    # Update user with this email
+    user_query = db_session.query(models.User).filter(models.User.email == email)
+    if exclude_user_id:
+        user_query = user_query.filter(models.User.id != exclude_user_id)
+    
+    user = user_query.first()
+    if user:
+        user.avatar_url = avatar_url
+        logger.info(f"Synced avatar for user {user.id} with email {email}")
+    
+    # Update all members with this email
+    member_query = db_session.query(models.Member).filter(models.Member.email == email)
+    if exclude_member_id:
+        member_query = member_query.filter(models.Member.id != exclude_member_id)
+    
+    members = member_query.all()
+    for member in members:
+        member.avatar_url = avatar_url
+        logger.info(f"Synced avatar for member {member.id} with email {email}")
+    
+    db_session.commit()
 
 
 @router.get('/me', response_model=schemas.UserRead)
@@ -142,9 +180,11 @@ async def upload_avatar(
                     logger.warning(f"Failed to delete old avatar: {e}")
         
         # Update user avatar URL
-        # In production, this should be a full URL with domain
         avatar_url = f"/uploads/avatars/{filename}"
         current_user.avatar_url = avatar_url
+        
+        # Sync avatar across all entities with the same email
+        sync_avatar_across_entities(current_user.email, avatar_url, db_session, exclude_user_id=current_user.id)
         
         db_session.add(current_user)
         db_session.commit()
@@ -192,6 +232,10 @@ async def delete_avatar(
         
         # Clear avatar URL
         current_user.avatar_url = None
+        
+        # Sync avatar deletion across all entities with the same email
+        sync_avatar_across_entities(current_user.email, None, db_session, exclude_user_id=current_user.id)
+        
         db_session.add(current_user)
         db_session.commit()
         
