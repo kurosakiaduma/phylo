@@ -160,15 +160,64 @@ def verify_otp(
     ).first()
     
     if not user:
-        # Create new user
-        display_name = payload.display_name or payload.email.split('@')[0]
-        user = models.User(
-            email=payload.email,
-            display_name=display_name
-        )
+        # Check if there's a member with this email to convert to user
+        member_with_email = db_session.query(models.Member).filter(
+            models.Member.email == payload.email
+        ).first()
+        
+        if member_with_email:
+            # Case 2: Member accepting invite - use member's details
+            # Use member's name as display_name (NOT email address!)
+            display_name = member_with_email.name or payload.display_name or payload.email.split('@')[0]
+            
+            user = models.User(
+                id=member_with_email.id,  # Use member's UUID as user ID
+                email=payload.email,
+                display_name=display_name,  # Use member's actual name
+                avatar_url=member_with_email.avatar_url,
+                dob=member_with_email.dob,
+                gender=member_with_email.gender,
+                pronouns=member_with_email.pronouns,
+                bio=member_with_email.bio
+            )
+            logger.info(f"Member {member_with_email.id} ({member_with_email.name}) converted to user with same ID: {payload.email}")
+        else:
+            # Case 1: User signing up via Get Started - generate new UUID
+            display_name = payload.display_name or payload.email.split('@')[0]
+            user = models.User(
+                email=payload.email,
+                display_name=display_name
+            )
+            logger.info(f"New user created via Get Started: {payload.email}")
+        
         db_session.add(user)
         db_session.flush()  # Get the user ID
-        logger.info(f"New user created: {user.id} with display_name: {display_name}")
+        
+        # If this was a member conversion, merge any duplicate members with same email
+        if member_with_email:
+            # Find all other members with this email (duplicates to be merged)
+            other_members = db_session.query(models.Member).filter(
+                models.Member.email == payload.email,
+                models.Member.id != user.id
+            ).all()
+            
+            for other_member in other_members:
+                old_member_id = other_member.id
+                
+                # Update any relationships that reference the old member ID to point to the main member
+                db_session.query(models.Relationship).filter(
+                    models.Relationship.a_member_id == old_member_id
+                ).update({models.Relationship.a_member_id: user.id})
+                
+                db_session.query(models.Relationship).filter(
+                    models.Relationship.b_member_id == old_member_id
+                ).update({models.Relationship.b_member_id: user.id})
+                
+                # Delete the duplicate member record
+                db_session.delete(other_member)
+                
+                logger.info(f"Merged duplicate member {old_member_id} into main member {user.id}")
+        
     else:
         # Update display_name if provided (allows users to update during login)
         if payload.display_name and payload.display_name != user.display_name:

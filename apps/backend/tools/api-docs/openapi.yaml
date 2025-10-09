@@ -1,0 +1,155 @@
+openapi: 3.0.0
+info:
+  title: Family Tree API
+  version: 1.0.0
+  description: "\n# Family Tree Management API\n\nA comprehensive RESTful API for\
+    \ managing family trees with role-based access control.\n\n## Features\n\n- \U0001F510\
+    \ **Passwordless Authentication** - Email-based OTP login\n- \U0001F465 **Role-Based\
+    \ Access** - Custodian, Contributor, Viewer roles\n- \U0001F333 **Tree Management**\
+    \ - Create and manage multiple family trees\n- \U0001F464 **Member Management**\
+    \ - Add, update, and organize family members\n- \U0001F491 **Relationships** -\
+    \ Track spouses, parents, children, and extended family\n- \U0001F4E7 **Invitations**\
+    \ - Invite users to collaborate on trees\n- \u2699\uFE0F **Flexible Settings**\
+    \ - Support for various family structures\n\n## Authentication\n\nAll protected\
+    \ endpoints require a valid JWT token. Obtain a token by:\n\n1. Request OTP code:\
+    \ `POST /api/auth/otp/request`\n2. Verify OTP: `POST /api/auth/otp/verify` \n\
+    3. Use returned token in Authorization header: `Bearer YOUR_TOKEN`\n\n## Rate\
+    \ Limiting\n\n- OTP requests: 3 per 15 minutes per email\n- Other endpoints: Follow\
+    \ standard API rate limits\n\n## Roles\n\n- **Custodian**: Full control over tree\
+    \ (manage members, settings, roles)\n- **Contributor**: Can propose changes (future\
+    \ feature)\n- **Viewer**: Read-only access to tree\n\n## Base URL\n\nDevelopment:\
+    \ `http://localhost:8050`  \nProduction: `https://api.yourfamilytree.com`\n  \
+    \          "
+  contact:
+    name: API Support
+    email: support@yourfamilytree.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+- url: http://localhost:8050
+  description: Development server
+- url: https://api.yourfamilytree.com
+  description: Production server
+tags:
+- name: Authentication
+  description: User authentication and session management
+- name: Trees
+  description: Family tree management
+- name: Members
+  description: Family member management
+- name: Relationships
+  description: Family relationship management
+- name: Invitations
+  description: Tree invitation management
+- name: Memberships
+  description: Role and membership management
+paths: {}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from OTP verification
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    Tree:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        settings:
+          $ref: '#/components/schemas/TreeSettings'
+    TreeSettings:
+      type: object
+      properties:
+        allow_same_sex:
+          type: boolean
+          default: true
+        monogamy:
+          type: boolean
+          default: true
+        allow_polygamy:
+          type: boolean
+          default: false
+        max_spouses_per_member:
+          type: integer
+          nullable: true
+        allow_single_parent:
+          type: boolean
+          default: true
+        allow_multi_parent_children:
+          type: boolean
+          default: false
+        max_parents_per_child:
+          type: integer
+          default: 2
+    Member:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tree_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+          nullable: true
+        dob:
+          type: string
+          nullable: true
+        gender:
+          type: string
+          nullable: true
+        deceased:
+          type: boolean
+          default: false
+        notes:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        updated_by:
+          type: string
+          format: uuid
+          nullable: true
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string

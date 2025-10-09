@@ -1,225 +1,361 @@
-import { Member, MemberInput, MemberId, Tree } from './types';
 
-function makeId(prefix = 'm') {
-  // simple unique id generator
-  return `${prefix}_${Date.now().toString(36)}_${Math.floor(Math.random() * 100000).toString(36)}`;
-}
+import { randomUUID } from 'crypto';
+import { Member, MemberId, MemberInput, Tree } from './types';
 
 export class FamilyTreeCore {
-  tree: Tree;
-  private members: Map<MemberId, Member>;
+  private members = new Map<MemberId, Member>();
+  private tree: Tree;
 
-  constructor(tree: Tree, members?: Member[]) {
+  constructor(tree: Tree, members: Member[] = []) {
     this.tree = tree;
-    this.members = new Map();
-    (members || []).forEach((m) => this.members.set(m.id, deepClone(m)));
+    members.forEach((member) => this.members.set(member.id, member));
   }
 
+  // --- Member Management ---
+
   addMember(input: MemberInput): Member {
-    const id = makeId('m');
-    const member: Member = {
+    const id = randomUUID();
+    const newMember: Member = {
+      ...input,
       id,
-      name: input.name,
-      email: input.email,
-      dob: input.dob,
-      gender: input.gender ?? 'unspecified',
-      deceased: input.deceased ?? false,
-      notes: input.notes,
       spouseIds: [],
       parentIds: [],
       childIds: [],
     };
-    this.members.set(id, deepClone(member));
-    return deepClone(member);
+    this.members.set(id, newMember);
+    return newMember;
   }
 
   getMember(id: MemberId): Member | undefined {
-    const m = this.members.get(id);
-    return m ? deepClone(m) : undefined;
+    return this.members.get(id);
   }
 
   updateMember(id: MemberId, updates: Partial<MemberInput>): Member {
-    const m = this.members.get(id);
-    if (!m) throw new Error('Member not found');
-    Object.assign(m, updates);
-    this.members.set(id, m);
-    return deepClone(m);
+    const member = this.getMember(id);
+    if (!member) {
+      throw new Error(`Member with id ${id} not found`);
+    }
+    const updatedMember = { ...member, ...updates };
+    this.members.set(id, updatedMember);
+    return updatedMember;
   }
 
   removeMember(id: MemberId): void {
-    const m = this.members.get(id);
-    if (!m) return;
-    // remove relationships
-    m.spouseIds.forEach((sid) => {
-      const s = this.members.get(sid);
-      if (s) s.spouseIds = s.spouseIds.filter((x) => x !== id);
+    const memberToRemove = this.getMember(id);
+    if (!memberToRemove) {
+      return; // or throw? For now, idempotent
+    }
+
+    // Remove from spouse's spouseIds
+    memberToRemove.spouseIds.forEach((spouseId) => {
+      const spouse = this.getMember(spouseId);
+      if (spouse) {
+        spouse.spouseIds = spouse.spouseIds.filter((sid) => sid !== id);
+      }
     });
-    m.parentIds.forEach((pid) => {
-      const p = this.members.get(pid);
-      if (p) p.childIds = p.childIds.filter((x) => x !== id);
+
+    // Remove from children's parentIds
+    memberToRemove.childIds.forEach((childId) => {
+      const child = this.getMember(childId);
+      if (child) {
+        child.parentIds = child.parentIds.filter((pid) => pid !== id);
+      }
     });
-    m.childIds.forEach((cid) => {
-      const c = this.members.get(cid);
-      if (c) c.parentIds = c.parentIds.filter((x) => x !== id);
+
+    // Remove from parents' childIds
+    memberToRemove.parentIds.forEach((parentId) => {
+      const parent = this.getMember(parentId);
+      if (parent) {
+        parent.childIds = parent.childIds.filter((cid) => cid !== id);
+      }
     });
+
     this.members.delete(id);
   }
 
   findMemberByName(name: string): Member | undefined {
-    const needle = name.trim().toLowerCase();
-    for (const m of this.members.values()) {
-      if (m.name && m.name.toLowerCase() === needle) return deepClone(m);
+    const lowerCaseName = name.toLowerCase();
+    for (const member of this.members.values()) {
+      if (member.name.toLowerCase() === lowerCaseName) {
+        return member;
+      }
     }
     return undefined;
   }
 
   listMembers(): Member[] {
-    return Array.from(this.members.values()).map(deepClone);
+    return Array.from(this.members.values());
   }
 
-  addSpouse(memberId: MemberId, spouseInput: MemberInput): Member {
-    const member = this.members.get(memberId);
-    if (!member) throw new Error('member not found');
+  // --- Relationship Management ---
 
-    // monogamy enforcement
-    const settings = this.tree.settings;
-    if (settings.monogamy && !settings.allowPolygamy) {
-      if (member.spouseIds.length > 0) {
-        throw new Error('Monogamy enforced: member already has a spouse');
-      }
+  addSpouse(memberId: MemberId, spouseInput: MemberInput): Member {
+    const member = this.getMember(memberId);
+    if (!member) {
+      throw new Error(`Member with id ${memberId} not found`);
     }
 
-    // create spouse
-    const spouse = this.addMember(spouseInput);
-    // update internal maps (addMember already added a copy)
-    const spouseObj = this.members.get(spouse.id)!;
-    const memberObj = this.members.get(memberId)!;
-    if (!memberObj.spouseIds.includes(spouse.id)) memberObj.spouseIds.push(spouse.id);
-    if (!spouseObj.spouseIds.includes(memberId)) spouseObj.spouseIds.push(memberId);
-    this.members.set(memberId, memberObj);
-    this.members.set(spouse.id, spouseObj);
-    return deepClone(spouseObj);
+    if (this.tree.settings.monogamy && member.spouseIds.length > 0) {
+      throw new Error(`Member ${member.name} is already married and monogamy is enforced.`);
+    }
+
+    if (
+      this.tree.settings.maxSpousesPerMember &&
+      member.spouseIds.length >= this.tree.settings.maxSpousesPerMember
+    ) {
+      throw new Error(`Member ${member.name} has reached the maximum number of spouses.`);
+    }
+
+    const newSpouse = this.addMember(spouseInput);
+    member.spouseIds.push(newSpouse.id);
+    newSpouse.spouseIds.push(member.id);
+
+    return newSpouse;
   }
 
   removeSpouse(memberId: MemberId, spouseId: MemberId): void {
-    const member = this.members.get(memberId);
-    const spouse = this.members.get(spouseId);
-    if (!member || !spouse) return;
-    member.spouseIds = member.spouseIds.filter((s) => s !== spouseId);
-    spouse.spouseIds = spouse.spouseIds.filter((s) => s !== memberId);
-    this.members.set(memberId, member);
-    this.members.set(spouseId, spouse);
+    const member = this.getMember(memberId);
+    const spouse = this.getMember(spouseId);
+
+    if (!member || !spouse) {
+      // Idempotent: if one is missing, the relationship can't exist
+      return;
+    }
+
+    member.spouseIds = member.spouseIds.filter((id) => id !== spouseId);
+    spouse.spouseIds = spouse.spouseIds.filter((id) => id !== memberId);
   }
 
   addChild(parentId: MemberId, childInput: MemberInput, secondParentId?: MemberId): Member {
-    const parent = this.members.get(parentId);
-    if (!parent) throw new Error('parent not found');
-    const settings = this.tree.settings;
-    if (secondParentId && !this.members.has(secondParentId)) throw new Error('second parent not found');
-
-    if (!secondParentId && !settings.allowSingleParent) {
-      throw new Error('Single-parent children not allowed by tree settings');
+    const parent1 = this.getMember(parentId);
+    if (!parent1) {
+      throw new Error(`Parent with id ${parentId} not found`);
     }
 
-    const child = this.addMember(childInput);
-    const childObj = this.members.get(child.id)!;
-    // add parent-child links
-    childObj.parentIds.push(parentId);
-    parent.childIds.push(child.id);
-    this.members.set(child.id, childObj);
-    this.members.set(parentId, parent);
-
+    const parents = [parent1];
     if (secondParentId) {
-      const second = this.members.get(secondParentId)!;
-      childObj.parentIds.push(secondParentId);
-      second.childIds.push(child.id);
-      this.members.set(child.id, childObj);
-      this.members.set(secondParentId, second);
+      const parent2 = this.getMember(secondParentId);
+      if (!parent2) {
+        throw new Error(`Parent with id ${secondParentId} not found`);
+      }
+      parents.push(parent2);
     }
-    return deepClone(childObj);
+
+    if (!this.tree.settings.allowSingleParent && parents.length < 2) {
+      throw new Error('Single parent children are not allowed in this tree.');
+    }
+
+    if (this.tree.settings.maxParentsPerChild && parents.length > this.tree.settings.maxParentsPerChild) {
+      throw new Error(`Cannot add a child with more than ${this.tree.settings.maxParentsPerChild} parents.`);
+    }
+
+    const newChild = this.addMember(childInput);
+    newChild.parentIds.push(...parents.map((p) => p.id));
+    parents.forEach((p) => p.childIds.push(newChild.id));
+
+    return newChild;
   }
 
   removeChild(parentId: MemberId, childId: MemberId): void {
-    const parent = this.members.get(parentId);
-    const child = this.members.get(childId);
-    if (!parent || !child) return;
-    parent.childIds = parent.childIds.filter((c) => c !== childId);
-    child.parentIds = child.parentIds.filter((p) => p !== parentId);
-    this.members.set(parentId, parent);
-    this.members.set(childId, child);
+    const parent = this.getMember(parentId);
+    const child = this.getMember(childId);
+
+    if (!parent || !child) {
+      return; // Idempotent
+    }
+
+    parent.childIds = parent.childIds.filter((id) => id !== childId);
+    child.parentIds = child.parentIds.filter((id) => id !== parentId);
   }
 
-  findPath(fromId: MemberId, toId: MemberId): MemberId[] {
-    // BFS on undirected graph composed of spouse and parent-child edges
-    if (fromId === toId) return [fromId];
-    const q: MemberId[] = [fromId];
-    const prev = new Map<MemberId, MemberId | null>();
-    prev.set(fromId, null);
-    while (q.length) {
-      const cur = q.shift()!;
-      const curNode = this.members.get(cur);
-      if (!curNode) continue;
-      const neighbors = new Set<MemberId>([...curNode.spouseIds, ...curNode.parentIds, ...curNode.childIds]);
-      for (const n of neighbors) {
-        if (prev.has(n)) continue;
-        prev.set(n, cur);
-        if (n === toId) {
-          // reconstruct path
-          const path: MemberId[] = [toId];
-          let p: MemberId | null = cur;
-          while (p) {
-            path.unshift(p);
-            p = prev.get(p) ?? null;
-          }
-          return path;
+  // --- Serialization & utils ---
+
+  computeRelationship(aId: MemberId, bId: MemberId): string {
+    if (aId === bId) return 'Self';
+    const a = this.getMember(aId);
+    const b = this.getMember(bId);
+    if (!a || !b) return 'Unknown';
+
+    // Direct relations
+    if (a.spouseIds.includes(bId)) return 'Spouse';
+    if (a.childIds.includes(bId)) return 'Parent';
+    if (a.parentIds.includes(bId)) return 'Child';
+
+    const ancestorsA = this._getAncestorsAndDistance(aId);
+    const ancestorsB = this._getAncestorsAndDistance(bId);
+
+    // Ancestor/Descendant
+    if (ancestorsB.has(aId)) {
+      const distance = ancestorsB.get(aId)!;
+      if (distance === 2) return 'Grandparent';
+      return `${'Great-'.repeat(distance - 2)}Grandparent`;
+    }
+    if (ancestorsA.has(bId)) {
+      const distance = ancestorsA.get(bId)!;
+      if (distance === 2) return 'Grandchild';
+      return `${'Great-'.repeat(distance - 2)}Grandchild`;
+    }
+
+    // Common ancestors for collateral relations
+    let closestCommonAncestor: MemberId | null = null;
+    let distA = -1, distB = -1;
+
+    for (const [ancestorId, dA] of ancestorsA.entries()) {
+      if (ancestorsB.has(ancestorId)) {
+        const dB = ancestorsB.get(ancestorId)!;
+        if (closestCommonAncestor === null || (dA + dB) < (distA + distB)) {
+          closestCommonAncestor = ancestorId;
+          distA = dA;
+          distB = dB;
         }
-        q.push(n);
       }
     }
-    return [];
-  }
 
-  computeRelationship(a: MemberId, b: MemberId): string {
-    if (!this.members.has(a) || !this.members.has(b)) return 'unknown';
-    const path = this.findPath(a, b);
-    if (path.length === 0) return 'unrelated';
-    // direct relations
-    if (path.length === 2) {
-      const [x, y] = path;
-      const ma = this.members.get(a)!;
-      if (ma.spouseIds.includes(b)) return 'spouse';
-      if (ma.parentIds.includes(b)) return 'parent';
-      if (ma.childIds.includes(b)) return 'child';
-      return 'related';
+    if (closestCommonAncestor) {
+      // Siblings (should be caught by this if direct parent check fails, e.g. half-siblings)
+      if (distA === 1 && distB === 1) return 'Sibling';
+
+      // Aunt/Uncle/Niece/Nephew
+      if (distA === 1 && distB > 1) return `${'Great-'.repeat(distB - 2)}Aunt/Uncle`;
+      if (distB === 1 && distA > 1) return `${'Great-'.repeat(distA - 2)}Niece/Nephew`;
+
+      // Cousins
+      const cousinLevel = Math.min(distA, distB) - 1;
+      const removal = Math.abs(distA - distB);
+      const ordinal = (n: number) => {
+        const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+        return n + (s[(v - 20) % 10] || s[v] || s[0]);
+      };
+      const removedStr = removal > 0 ? `, ${removal === 1 ? 'once' : removal === 2 ? 'twice' : `${removal} times`} removed` : '';
+      return `${ordinal(cousinLevel)} Cousin${removedStr}`;
     }
-    // fallback: return path length
-    return `${path.length - 1} steps`;
+
+    // In-laws (basic)
+    for (const spouseId of a.spouseIds) {
+      const spouse = this.getMember(spouseId);
+      if (spouse) {
+        if (spouse.parentIds.includes(bId)) return 'Parent-in-law';
+        if (spouse.childIds.includes(bId)) return 'Child-in-law';
+        const spouseAncestors = this._getAncestorsAndDistance(spouseId);
+        if (Array.from(spouseAncestors.keys()).some(ancestorId => b.parentIds.includes(ancestorId))) {
+            return 'Sibling-in-law';
+        }
+      }
+    }
+
+    return 'Unknown';
   }
 
   listRelations(memberId: MemberId, type: string): MemberId[] {
-    const m = this.members.get(memberId);
-    if (!m) return [];
-    switch (type) {
-      case 'spouse':
-        return Array.from(m.spouseIds);
-      case 'parent':
-        return Array.from(m.parentIds);
-      case 'child':
-        return Array.from(m.childIds);
-      default:
-        return [];
+    const relations: MemberId[] = [];
+    const lowerCaseType = type.toLowerCase();
+    for (const otherMember of this.members.values()) {
+      if (otherMember.id === memberId) continue;
+      const relationship = this.computeRelationship(memberId, otherMember.id);
+      if (relationship.toLowerCase() === lowerCaseType) {
+        relations.push(otherMember.id);
+      }
     }
+    return relations;
   }
 
+  findPath(fromId: MemberId, toId: MemberId): MemberId[] {
+    if (!this.members.has(fromId) || !this.members.has(toId)) {
+      return [];
+    }
+
+    const queue: { id: MemberId; path: MemberId[] }[] = [{ id: fromId, path: [fromId] }];
+    const visited = new Set<MemberId>([fromId]);
+
+    while (queue.length > 0) {
+      const { id, path } = queue.shift()!;
+
+      if (id === toId) {
+        return path;
+      }
+
+      const member = this.getMember(id)!;
+      const neighbors = [...member.parentIds, ...member.childIds, ...member.spouseIds];
+
+      for (const neighborId of neighbors) {
+        if (!visited.has(neighborId)) {
+          visited.add(neighborId);
+          queue.push({ id: neighborId, path: [...path, neighborId] });
+        }
+      }
+    }
+
+    return []; // No path found
+  }
+
+  validate(): { errors: string[]; warnings: string[] } {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    for (const member of this.members.values()) {
+      // Referential integrity
+      for (const spouseId of member.spouseIds) {
+        if (!this.members.has(spouseId)) {
+          errors.push(`[Integrity] Member ${member.id} has non-existent spouse ${spouseId}`);
+        }
+      }
+      for (const parentId of member.parentIds) {
+        if (!this.members.has(parentId)) {
+          errors.push(`[Integrity] Member ${member.id} has non-existent parent ${parentId}`);
+        }
+      }
+      for (const childId of member.childIds) {
+        if (!this.members.has(childId)) {
+          errors.push(`[Integrity] Member ${member.id} has non-existent child ${childId}`);
+        } else {
+          // Circular dependency check
+          const ancestors = this._getAncestorsAndDistance(member.id);
+          if (ancestors.has(childId)) {
+            errors.push(`[Circular] Member ${childId} is an ancestor of their own parent ${member.id}`);
+          }
+        }
+      }
+
+      // Orphan warning
+      if (member.parentIds.length === 0) {
+        warnings.push(`[Orphan] Member ${member.id} (${member.name}) has no parents.`);
+      }
+    }
+
+    return { errors, warnings };
+  }
+
+
   serialize(): { tree: Tree; members: Member[] } {
-    return { tree: deepClone(this.tree), members: this.listMembers() };
+    return {
+      tree: this.tree,
+      members: this.listMembers(),
+    };
+  }
+
+  private _getAncestorsAndDistance(memberId: MemberId): Map<MemberId, number> {
+    const ancestors = new Map<MemberId, number>();
+    const queue: { id: MemberId; distance: number }[] = [{ id: memberId, distance: 0 }];
+    const visited = new Set<MemberId>([memberId]);
+
+    while (queue.length > 0) {
+      const { id, distance } = queue.shift()!;
+      const member = this.getMember(id);
+
+      if (member) {
+        for (const parentId of member.parentIds) {
+          if (!visited.has(parentId)) {
+            visited.add(parentId);
+            ancestors.set(parentId, distance + 1);
+            queue.push({ id: parentId, distance: distance + 1 });
+          }
+        }
+      }
+    }
+    return ancestors;
   }
 
   static fromSerialized(payload: { tree: Tree; members: Member[] }): FamilyTreeCore {
-    return new FamilyTreeCore(deepClone(payload.tree), deepClone(payload.members));
+    return new FamilyTreeCore(payload.tree, payload.members);
   }
-}
-
-function deepClone<T>(v: T): T {
-  return JSON.parse(JSON.stringify(v));
 }

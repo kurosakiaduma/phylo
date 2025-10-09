@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 import logging
 import os
 import uuid
@@ -16,10 +17,38 @@ from utils import db
 from utils.dependencies import get_current_user
 from typing import Optional
 from uuid import UUID
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Users"], prefix="/api/users")
+router = APIRouter(tags=["Users"], prefix="/users")
+
+
+@router.post('/check-email')
+async def check_email_exists(
+    payload: schemas.EmailCheck,
+    db_session: Session = Depends(db.get_db)
+):
+    """Check if a user account exists for the given email.
+    
+    Used by the frontend to determine whether to show login or register flow.
+    
+    Args:
+        payload: Email to check
+        db_session: Database session
+        
+    Returns:
+        dict: {"exists": bool, "email": str}
+    """
+    user = db_session.query(models.User).filter(
+        models.User.email == payload.email
+    ).first()
+    
+    return {
+        "exists": user is not None,
+        "email": payload.email
+    }
+
 
 # Configuration for file uploads
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "./uploads/avatars"))
@@ -30,7 +59,7 @@ AVATAR_SIZE = (400, 400)  # Standard avatar size
 
 
 def sync_avatar_across_entities(email: str, avatar_url: Optional[str], db_session: Session, exclude_member_id: Optional[UUID] = None, exclude_user_id: Optional[UUID] = None):
-    """Sync avatar URL across user and all members with the same email.
+    """Sync avatar URL across user and all members with the same email or ID.
     
     Args:
         email: Email to sync avatars for
@@ -51,11 +80,26 @@ def sync_avatar_across_entities(email: str, avatar_url: Optional[str], db_sessio
     if user:
         user.avatar_url = avatar_url
         logger.info(f"Synced avatar for user {user.id} with email {email}")
+        
+        # Also sync to members with the same ID (unified identity)
+        unified_members = db_session.query(models.Member).filter(
+            and_(
+                models.Member.id == user.id,
+                models.Member.id != exclude_member_id if exclude_member_id else True
+            )
+        ).all()
+        
+        for member in unified_members:
+            member.avatar_url = avatar_url
+            logger.info(f"Synced avatar for unified member {member.id} in tree {member.tree_id}")
     
-    # Update all members with this email
+    # Update all members with this email (legacy cases)
     member_query = db_session.query(models.Member).filter(models.Member.email == email)
     if exclude_member_id:
         member_query = member_query.filter(models.Member.id != exclude_member_id)
+    if user:
+        # Exclude members that already got updated via unified ID
+        member_query = member_query.filter(models.Member.id != user.id)
     
     members = member_query.all()
     for member in members:
@@ -73,6 +117,59 @@ async def get_current_user_profile(
     return current_user
 
 
+def sync_user_data_to_members(user: models.User, db_session: Session):
+    """Sync user profile data to all members with the same ID or email.
+    
+    This ensures that when a user updates their profile, the changes
+    are reflected in their member records across all trees.
+    
+    Priority:
+    1. First sync to members with the same ID (unified identity)
+    2. Then sync to members with the same email but different ID (legacy cases)
+    """
+    # Find all members with this user's ID (unified identity system)
+    members_by_id = db_session.query(models.Member).filter(
+        models.Member.id == user.id
+    ).all()
+    
+    # Find all members with this email but different ID (legacy cases)
+    members_by_email = db_session.query(models.Member).filter(
+        and_(
+            models.Member.email == user.email,
+            models.Member.id != user.id
+        )
+    ).all() if user.email else []
+    
+    all_members = members_by_id + members_by_email
+    
+    for member in all_members:
+        # Always sync these fields (even if None/empty to clear them)
+        member.avatar_url = user.avatar_url
+        member.dob = user.dob
+        member.gender = user.gender
+        member.pronouns = user.pronouns
+        member.bio = user.bio
+        
+        # Update member name if user has display_name, otherwise keep existing name
+        if user.display_name:
+            member.name = user.display_name
+        
+        # Update member email to match user email
+        if user.email:
+            member.email = user.email
+        
+        # Update metadata
+        member.updated_at = datetime.utcnow()
+        
+        sync_type = "ID match" if member.id == user.id else "email match"
+        logger.info(f"Synced user data to member {member.id} in tree {member.tree_id} ({sync_type})")
+    
+    # Commit all changes
+    db_session.commit()
+    
+    return len(all_members)  # Return count of synced members
+
+
 @router.patch('/me', response_model=schemas.UserRead)
 async def update_current_user_profile(
     updates: schemas.UserUpdate,
@@ -81,7 +178,8 @@ async def update_current_user_profile(
 ):
     """Update current user's profile.
     
-    Users can update their display name and avatar URL.
+    Users can update their profile information including demographics.
+    Changes are automatically synced to member records with the same email.
     """
     # Update user fields
     if updates.display_name is not None:
@@ -90,9 +188,32 @@ async def update_current_user_profile(
     if updates.avatar_url is not None:
         current_user.avatar_url = updates.avatar_url
     
+    if updates.dob is not None:
+        current_user.dob = updates.dob
+    
+    if updates.gender is not None:
+        current_user.gender = updates.gender
+    
+    if updates.pronouns is not None:
+        current_user.pronouns = updates.pronouns
+    
+    if updates.bio is not None:
+        current_user.bio = updates.bio
+    
+    if updates.phone is not None:
+        current_user.phone = updates.phone
+    
+    if updates.location is not None:
+        current_user.location = updates.location
+    
     db_session.add(current_user)
     db_session.commit()
     db_session.refresh(current_user)
+    
+    # Sync user data to member records
+    synced_count = sync_user_data_to_members(current_user, db_session)
+    
+    logger.info(f"Profile updated for user {current_user.id}, synced to {synced_count} member records")
     
     return current_user
 

@@ -1,16 +1,48 @@
-version: '3.8'
+version: "3.8"
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:17-alpine
     restart: unless-stopped
     environment:
+      # Use same credentials as bare metal setup for seamless migration
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: "!@Octopizzo808@!"
       POSTGRES_DB: family_tree_dev
+      # Performance tuning
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # - ./init-scripts:/docker-entrypoint-initdb.d
     ports:
-      - '5432:5432'
+      - "5432:5432"
+    networks:
+      - family_tree_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - family_tree_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
 volumes:
   pgdata:
+  redisdata:
+
+networks:
+  family_tree_network:
+    driver: bridge

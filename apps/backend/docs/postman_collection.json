@@ -1,0 +1,569 @@
+{
+  "info": {
+    "name": "Family Tree API",
+    "_postman_id": "family-tree-api-v1",
+    "description": "Complete API collection for Family Tree management system with role-based access control",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8050",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_email",
+      "value": "test@example.com",
+      "type": "string"
+    },
+    {
+      "key": "tree_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "member_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Request OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/otp/request",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var jsonData = pm.response.json();",
+                  "  pm.collectionVariables.set('access_token', jsonData.access_token);",
+                  "  console.log('Token saved:', jsonData.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/otp/verify",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"code\": \"123456\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/auth/me"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var jsonData = pm.response.json();",
+                  "  pm.collectionVariables.set('access_token', jsonData.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/auth/refresh"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/auth/logout"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Trees",
+      "item": [
+        {
+          "name": "List Trees",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/trees"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Tree",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var jsonData = pm.response.json();",
+                  "  pm.collectionVariables.set('tree_id', jsonData.id);",
+                  "  console.log('Tree ID saved:', jsonData.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/trees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My Family Tree\",\n  \"description\": \"Our family genealogy\",\n  \"settings\": {\n    \"allow_same_sex\": true,\n    \"monogamy\": true,\n    \"allow_polygamy\": false,\n    \"allow_single_parent\": true,\n    \"allow_multi_parent_children\": false,\n    \"max_parents_per_child\": 2\n  }\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Tree Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/trees/{{tree_id}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Tree",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/trees/{{tree_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Family Tree\",\n  \"description\": \"Updated description\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Preview Settings Change",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/trees/{{tree_id}}/settings/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monogamy\": false,\n  \"allow_polygamy\": true\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Tree",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/trees/{{tree_id}}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Members",
+      "item": [
+        {
+          "name": "List Members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/trees/{{tree_id}}/members?limit=50",
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "deceased",
+                  "value": "false",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var jsonData = pm.response.json();",
+                  "  pm.collectionVariables.set('member_id', jsonData.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/trees/{{tree_id}}/members",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"dob\": \"1980-01-15\",\n  \"gender\": \"male\",\n  \"deceased\": false,\n  \"notes\": \"Founder of the family\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Member",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/members/{{member_id}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Member",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/members/{{member_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Updated Doe\",\n  \"notes\": \"Updated notes\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Member",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/members/{{member_id}}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Relationships",
+      "item": [
+        {
+          "name": "Add Spouse",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/members/{{member_id}}/spouse",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Doe\",\n  \"email\": \"jane@example.com\",\n  \"gender\": \"female\",\n  \"dob\": \"1982-05-20\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Spouse",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/members/{{member_id}}/spouse/{{spouse_id}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Add Child",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/members/{{member_id}}/children",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"child\": {\n    \"name\": \"Junior Doe\",\n    \"gender\": \"male\",\n    \"dob\": \"2010-03-15\"\n  },\n  \"second_parent_id\": null\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Child",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/members/{{member_id}}/children/{{child_id}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Compute Relationship",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/relations/{{tree_id}}/between?from={{member_id}}&to={{other_member_id}}",
+              "query": [
+                {
+                  "key": "from",
+                  "value": "{{member_id}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{other_member_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Invitations",
+      "item": [
+        {
+          "name": "Send Invite",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/invites",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tree_id\": \"{{tree_id}}\",\n  \"email\": \"invitee@example.com\",\n  \"role\": \"contributor\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Tree Invites",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/trees/{{tree_id}}/invites",
+              "query": [
+                {
+                  "key": "include_expired",
+                  "value": "false",
+                  "disabled": true
+                },
+                {
+                  "key": "include_accepted",
+                  "value": "false",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "View Invite",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/invites/{{invite_token}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Accept Invite",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/invites/{{invite_token}}/accept"
+          },
+          "response": []
+        },
+        {
+          "name": "Resend Invite",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/invites/{{invite_token}}/resend"
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Invite",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/invites/{{invite_token}}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Memberships",
+      "item": [
+        {
+          "name": "List Tree Memberships",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/trees/{{tree_id}}/memberships"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/memberships/{{user_id}}/{{tree_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"custodian\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Member",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/memberships/{{user_id}}/{{tree_id}}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/health",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

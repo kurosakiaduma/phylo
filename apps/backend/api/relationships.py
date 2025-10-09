@@ -926,13 +926,39 @@ def _compute_relationship(
                 prefix = "great-" * (dist_from - 2)
                 return f"{prefix}niece/nephew", [from_id, closest_common_ancestor, to_id]
         
-        # Cousins: both are 2+ generations from common ancestor
+        # Extended Aunt/Uncle relationships: one person is 1 generation from ancestor, other is 2+
+        # This handles great-aunt/uncle relationships that were missed above
+        if dist_from == 1 and dist_to >= 2:
+            if dist_to == 2:
+                return "aunt/uncle", [from_id, closest_common_ancestor, to_id]
+            else:
+                prefix = "great-" * (dist_to - 2)
+                return f"{prefix}aunt/uncle", [from_id, closest_common_ancestor, to_id]
+        
+        # Extended Niece/Nephew relationships: one person is 1 generation from ancestor, other is 2+
+        # This handles great-niece/nephew relationships that were missed above
+        if dist_to == 1 and dist_from >= 2:
+            if dist_from == 2:
+                return "niece/nephew", [from_id, closest_common_ancestor, to_id]
+            else:
+                prefix = "great-" * (dist_from - 2)
+                return f"{prefix}niece/nephew", [from_id, closest_common_ancestor, to_id]
+        
+        # True Cousins: both are 2+ generations from common ancestor AND on the same generational level
+        # Cousins are people whose closest common ancestors are their grandparents or further back
+        # AND they are on the same generation level relative to that ancestor
         if dist_from >= 2 and dist_to >= 2:
+            # Only classify as cousins if they're on the same generational level
+            # OR if the generational difference is small enough to warrant "removed" terminology
+            
             # Cousin degree is the minimum distance minus 1
             cousin_level = min(dist_from, dist_to) - 1
             # Removal is the difference in distances
             removal = abs(dist_from - dist_to)
             
+            # For very large generational differences, these might be more like
+            # distant aunt/uncle relationships, but we'll use the cousin terminology
+            # with "times removed" for clarity
             ordinal_str = _ordinal(cousin_level)
             
             if removal == 0:
@@ -973,17 +999,15 @@ def _compute_relationship(
         if to_id in spouses.get(child_id, []):
             return "child-in-law", [from_id, child_id, to_id]
     
-    # Check for in-law relationships first (before blood relations)
-    in_law_result = _check_in_law_relationships(from_id, to_id, graph)
-    if in_law_result:
-        return in_law_result
-    
-    # Check for cultural/nuanced relationships (parent's cousin as aunt/uncle)
+    # Check for cultural/nuanced relationships first (parent's cousin as 2nd uncle/aunt)
     cultural_result = _check_cultural_relationships(from_id, to_id, graph)
     if cultural_result:
         return cultural_result
     
-
+    # Check for in-law relationships (after cultural, before unknown)
+    in_law_result = _check_in_law_relationships(from_id, to_id, graph)
+    if in_law_result:
+        return in_law_result
     
     # If no relationship found
     return "unknown", [from_id, to_id]
@@ -1170,7 +1194,7 @@ async def compute_relationship(
 
 
 def _check_in_law_relationships(from_id: UUID, to_id: UUID, graph: dict) -> Optional[tuple[str, List[UUID]]]:
-    """Check for in-law relationships through spouse connections."""
+    """Check for comprehensive in-law relationships through spouse connections."""
     spouses = graph["spouses"]
     parents = graph["parents"]
     children = graph["children"]
@@ -1185,32 +1209,84 @@ def _check_in_law_relationships(from_id: UUID, to_id: UUID, graph: dict) -> Opti
         if from_id in spouses.get(parent_id, []) and from_id not in parents.get(to_id, []):
             return "step-child", [from_id, parent_id, to_id]
     
-    # Through from_id's spouses
+    # Through from_id's spouses - comprehensive in-law relationships
     for spouse_id in spouses.get(from_id, []):
-        # Spouse's parent = parent-in-law
-        if to_id in parents.get(spouse_id, []):
-            return "parent-in-law", [from_id, spouse_id, to_id]
+        # Get the blood relationship between spouse and to_id
+        blood_relationship = _compute_basic_blood_relationship(spouse_id, to_id, graph)
         
-        # Spouse's child = step-child (if not biological child)
-        if to_id in children.get(spouse_id, []):
-            if to_id not in children.get(from_id, []):
-                return "step-child", [from_id, spouse_id, to_id]
-        
-        # Spouse's sibling = sibling-in-law
-        spouse_ancestors = _get_ancestors_and_distance(spouse_id, graph)
-        to_ancestors = _get_ancestors_and_distance(to_id, graph)
-        
-        # Check if they share a parent (are siblings)
-        for ancestor_id in spouse_ancestors:
-            if ancestor_id in to_ancestors:
-                if spouse_ancestors[ancestor_id] == 1 and to_ancestors[ancestor_id] == 1:
-                    return "sibling-in-law", [from_id, spouse_id, ancestor_id, to_id]
+        if blood_relationship:
+            rel_type, path = blood_relationship
+            rel_lower = rel_type.lower()
+            
+            # Convert blood relationships to in-law relationships
+            if rel_lower == "parent":
+                return "parent-in-law", [from_id, spouse_id, to_id]
+            elif rel_lower == "child":
+                # Only step-child if not biological child of from_id
+                if to_id not in children.get(from_id, []):
+                    return "step-child", [from_id, spouse_id, to_id]
+            elif rel_lower == "sibling":
+                return "sibling-in-law", [from_id, spouse_id, to_id]
+            elif rel_lower == "grandparent":
+                return "grandparent-in-law", [from_id, spouse_id, to_id]
+            elif rel_lower == "grandchild":
+                return "grandchild-in-law", [from_id, spouse_id, to_id]
+            elif "great-" in rel_lower and "grandparent" in rel_lower:
+                prefix = rel_lower.replace("grandparent", "")
+                return f"{prefix}grandparent-in-law", [from_id, spouse_id, to_id]
+            elif "great-" in rel_lower and "grandchild" in rel_lower:
+                prefix = rel_lower.replace("grandchild", "")
+                return f"{prefix}grandchild-in-law", [from_id, spouse_id, to_id]
+            elif rel_lower == "aunt/uncle":
+                return "aunt/uncle-in-law", [from_id, spouse_id, to_id]
+            elif rel_lower == "niece/nephew":
+                return "niece/nephew-in-law", [from_id, spouse_id, to_id]
+            elif "great-" in rel_lower and "aunt/uncle" in rel_lower:
+                prefix = rel_lower.replace("aunt/uncle", "")
+                return f"{prefix}aunt/uncle-in-law", [from_id, spouse_id, to_id]
+            elif "great-" in rel_lower and "niece/nephew" in rel_lower:
+                prefix = rel_lower.replace("niece/nephew", "")
+                return f"{prefix}niece/nephew-in-law", [from_id, spouse_id, to_id]
+            elif "cousin" in rel_lower:
+                return f"{rel_type}-in-law", [from_id, spouse_id, to_id]
     
     # Check reverse in-law relationships
     # Child's spouse = child-in-law
     for child_id in children.get(from_id, []):
         if to_id in spouses.get(child_id, []):
             return "child-in-law", [from_id, child_id, to_id]
+    
+    # Check if to_id is married to any blood relative of from_id
+    for relative_id in graph["members"].keys():
+        if relative_id == from_id or relative_id == to_id:
+            continue
+            
+        # Check if to_id is married to this relative
+        if to_id in spouses.get(relative_id, []):
+            # Get blood relationship between from_id and relative_id
+            blood_relationship = _compute_basic_blood_relationship(from_id, relative_id, graph)
+            
+            if blood_relationship:
+                rel_type, _ = blood_relationship
+                rel_lower = rel_type.lower()
+                
+                # Convert to reverse in-law relationship
+                if rel_lower == "parent":
+                    return "child-in-law", [from_id, relative_id, to_id]
+                elif rel_lower == "child":
+                    return "parent-in-law", [from_id, relative_id, to_id]
+                elif rel_lower == "sibling":
+                    return "sibling-in-law", [from_id, relative_id, to_id]
+                elif rel_lower == "grandparent":
+                    return "grandchild-in-law", [from_id, relative_id, to_id]
+                elif rel_lower == "grandchild":
+                    return "grandparent-in-law", [from_id, relative_id, to_id]
+                elif rel_lower == "aunt/uncle":
+                    return "niece/nephew-in-law", [from_id, relative_id, to_id]
+                elif rel_lower == "niece/nephew":
+                    return "aunt/uncle-in-law", [from_id, relative_id, to_id]
+                elif "cousin" in rel_lower:
+                    return f"{rel_type}-in-law", [from_id, relative_id, to_id]
     
     return None
 
@@ -1220,41 +1296,111 @@ def _check_cultural_relationships(from_id: UUID, to_id: UUID, graph: dict) -> Op
     
     In many cultures, certain relationships are treated as closer than their technical
     genealogical distance would suggest. For example:
-    - Parent's cousin is often called "aunt" or "uncle"
-    - Parent's close friend might be called "aunt" or "uncle" (not implemented here)
-    - Cousin's spouse might be called "cousin-in-law"
+    - Parent's 1st cousin is often called "2nd uncle/aunt" 
+    - Parent's sibling is "uncle/aunt", so parent's cousin becomes "2nd uncle/aunt"
+    - Grandparent's sibling is "great-uncle/aunt", so grandparent's cousin becomes "2nd great-uncle/aunt"
     """
     parents = graph["parents"]
     spouses = graph["spouses"]
     
-    # Check if to_id is a cousin of from_id's parents (making them an honorary aunt/uncle)
+    # Check if to_id is related to from_id's ancestors (cultural aunt/uncle relationships)
     for parent_id in parents.get(from_id, []):
         parent_relationship = _compute_basic_blood_relationship(parent_id, to_id, graph)
         if parent_relationship:
             rel_type, _ = parent_relationship
             rel_lower = rel_type.lower()
             
-            # Parent's cousin = cousin-aunt/uncle (cultural relationship)
-            if "cousin" in rel_lower:
-                return f"cousin-aunt/uncle", [from_id, parent_id, to_id]
+            # Parent's sibling = aunt/uncle (standard)
+            if rel_lower == "sibling":
+                return "aunt/uncle", [from_id, parent_id, to_id]
             
-            # Parent's sibling's spouse = aunt/uncle-in-law
-            # This is handled through the spouse's sibling logic, but we can add cultural nuance
-            if "sibling-in-law" in rel_lower:
-                return "aunt/uncle-in-law", [from_id, parent_id, to_id]
+            # Parent's 1st cousin = 2nd uncle/aunt (cultural)
+            elif rel_lower == "1st cousin":
+                return "2nd aunt/uncle", [from_id, parent_id, to_id]
+            
+            # Parent's 2nd cousin = 3rd uncle/aunt (cultural)
+            elif rel_lower == "2nd cousin":
+                return "3rd aunt/uncle", [from_id, parent_id, to_id]
+            
+            # Parent's Nth cousin = (N+1)th uncle/aunt (cultural)
+            elif "cousin" in rel_lower and "removed" not in rel_lower:
+                # Extract the cousin degree
+                import re
+                match = re.search(r'(\d+)(?:st|nd|rd|th)\s+cousin', rel_lower)
+                if match:
+                    cousin_degree = int(match.group(1))
+                    ordinal_degree = _ordinal(cousin_degree + 1)
+                    return f"{ordinal_degree} aunt/uncle", [from_id, parent_id, to_id]
+            
+            # Parent's cousin with removal = cousin-aunt/uncle
+            elif "cousin" in rel_lower and "removed" in rel_lower:
+                return f"cousin-aunt/uncle", [from_id, parent_id, to_id]
     
-    # Check reverse: if from_id is a cousin of to_id's parents
-    for parent_id in parents.get(to_id, []):
-        parent_relationship = _compute_basic_blood_relationship(from_id, parent_id, graph)
-        if parent_relationship:
-            rel_type, _ = parent_relationship
+    # Check grandparent relationships for great-uncle/aunt patterns
+    ancestors_from = _get_ancestors_and_distance(from_id, graph)
+    
+    for ancestor_id, distance in ancestors_from.items():
+        if distance >= 2:  # Grandparent or higher
+            ancestor_relationship = _compute_basic_blood_relationship(ancestor_id, to_id, graph)
+            if ancestor_relationship:
+                rel_type, _ = ancestor_relationship
+                rel_lower = rel_type.lower()
+                
+                # Grandparent's sibling = great-uncle/aunt
+                if distance == 2 and rel_lower == "sibling":
+                    return "great-aunt/uncle", [from_id, ancestor_id, to_id]
+                
+                # Great-grandparent's sibling = great-great-uncle/aunt
+                elif distance > 2 and rel_lower == "sibling":
+                    prefix = "great-" * (distance - 1)
+                    return f"{prefix}aunt/uncle", [from_id, ancestor_id, to_id]
+                
+                # Grandparent's 1st cousin = 2nd great-uncle/aunt (cultural)
+                elif distance == 2 and rel_lower == "1st cousin":
+                    return "2nd great-aunt/uncle", [from_id, ancestor_id, to_id]
+                
+                # Higher ancestor's cousin relationships
+                elif distance > 2 and "cousin" in rel_lower and "removed" not in rel_lower:
+                    import re
+                    match = re.search(r'(\d+)(?:st|nd|rd|th)\s+cousin', rel_lower)
+                    if match:
+                        cousin_degree = int(match.group(1))
+                        ordinal_degree = _ordinal(cousin_degree + 1)
+                        prefix = "great-" * (distance - 1)
+                        return f"{ordinal_degree} {prefix}aunt/uncle", [from_id, ancestor_id, to_id]
+    
+    # Check reverse: if from_id is related to to_id's ancestors (cultural niece/nephew)
+    ancestors_to = _get_ancestors_and_distance(to_id, graph)
+    
+    for ancestor_id, distance in ancestors_to.items():
+        ancestor_relationship = _compute_basic_blood_relationship(from_id, ancestor_id, graph)
+        if ancestor_relationship:
+            rel_type, _ = ancestor_relationship
             rel_lower = rel_type.lower()
             
-            if "cousin" in rel_lower:
-                return f"cousin-niece/nephew", [from_id, parent_id, to_id]
+            # from_id is sibling of to_id's parent = aunt/uncle relationship (reverse)
+            if distance == 1 and rel_lower == "sibling":
+                return "niece/nephew", [from_id, ancestor_id, to_id]
+            
+            # from_id is 1st cousin of to_id's parent = 2nd aunt/uncle relationship (reverse)
+            elif distance == 1 and rel_lower == "1st cousin":
+                return "2nd niece/nephew", [from_id, ancestor_id, to_id]
+            
+            # from_id is Nth cousin of to_id's parent = (N+1)th niece/nephew (cultural)
+            elif distance == 1 and "cousin" in rel_lower and "removed" not in rel_lower:
+                import re
+                match = re.search(r'(\d+)(?:st|nd|rd|th)\s+cousin', rel_lower)
+                if match:
+                    cousin_degree = int(match.group(1))
+                    ordinal_degree = _ordinal(cousin_degree + 1)
+                    return f"{ordinal_degree} niece/nephew", [from_id, ancestor_id, to_id]
+            
+            # Great relationships
+            elif distance >= 2 and rel_lower == "sibling":
+                prefix = "great-" * (distance - 1)
+                return f"{prefix}niece/nephew", [from_id, ancestor_id, to_id]
     
     # Check for cousin-in-law relationships (cousin's spouse)
-    # First, check if from_id and to_id are related through a cousin relationship
     basic_relationship = _compute_basic_blood_relationship(from_id, to_id, graph)
     if basic_relationship:
         rel_type, _ = basic_relationship

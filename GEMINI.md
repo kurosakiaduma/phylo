@@ -77,7 +77,7 @@ Note: A user may have different roles across different family trees.
 ## Tech & Monorepo Setup
 
 - **Frontend:** Next.js, shadcn UI, tailwindcss, lucide icons, ripple/gsap for motion.
-- **Backend:** FastAPI + Postgres. Email via a free provider plugged into FastAPI (choice TBD).
+- **Backend:** FastAPI + Postgres. Email via Mailtrap API for OTPs/invites. Configure with Mailtrap API token, sender email, and inbox ID; implementation is pluggable for future providers.
 - **Headless core:** Extract from `frontend/family-tree/src/models` into `packages/family-tree-core` with TS-only API and no UI. Optionally a thin `packages/family-tree-react` for hooks.
 - **Package management:** npm workspaces; shared TS configs and ESLint.
 

@@ -28,6 +28,58 @@ ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 AVATAR_SIZE = (400, 400)  # Standard avatar size
 
 
+def sync_member_data_to_user(member: models.Member, db_session: Session):
+    """Sync member profile data back to user if they have the same ID (unified identity).
+    
+    This ensures that when a member's profile is updated by a custodian,
+    the changes are reflected in the user's profile if they are the same person.
+    
+    Args:
+        member: Member whose data was updated
+        db_session: Database session
+        
+    Returns:
+        bool: True if sync occurred, False if no matching user found
+    """
+    # Only sync if member has an ID that matches a user (unified identity)
+    user = db_session.query(models.User).filter(
+        models.User.id == member.id
+    ).first()
+    
+    if not user:
+        # Also try to find user by email if no ID match
+        if member.email:
+            user = db_session.query(models.User).filter(
+                models.User.email == member.email
+            ).first()
+    
+    if user:
+        # Sync demographic data from member to user
+        user.avatar_url = member.avatar_url
+        user.dob = member.dob
+        user.gender = member.gender
+        user.pronouns = member.pronouns
+        user.bio = member.bio
+        
+        # Update display name if member name is different
+        if member.name and user.display_name != member.name:
+            user.display_name = member.name
+        
+        # Update email if member has email
+        if member.email and user.email != member.email:
+            user.email = member.email
+        
+        user.updated_at = datetime.utcnow()
+        
+        db_session.add(user)
+        db_session.commit()
+        
+        logger.info(f"Synced member {member.id} data back to user {user.id}")
+        return True
+    
+    return False
+
+
 def sync_avatar_across_entities(email: str, avatar_url: Optional[str], db_session: Session, exclude_member_id: Optional[UUID] = None, exclude_user_id: Optional[UUID] = None):
     """Sync avatar URL across user and all members with the same email.
     
@@ -228,6 +280,7 @@ async def list_tree_members(
     limit: int = Query(50, ge=1, le=200, description="Number of members per page"),
     status: Optional[str] = Query(None, description="Filter by status: 'alive' or 'deceased'"),
     search: Optional[str] = Query(None, description="Search by name (case-insensitive)"),
+    sort_by: Optional[str] = Query("name", description="Sort by: 'name' (alphabetical) or 'created_at' (chronological)"),
     current_user: models.User = Depends(get_current_user),
     db_session: Session = Depends(db.get_db)
 ):
@@ -301,8 +354,13 @@ async def list_tree_members(
                 )
             )
     
-    # Order by created_at and id for consistent pagination
-    query = query.order_by(models.Member.created_at.asc(), models.Member.id.asc())
+    # Apply sorting
+    if sort_by == "name":
+        # Alphabetical sorting by name (case-insensitive)
+        query = query.order_by(func.lower(models.Member.name).asc(), models.Member.id.asc())
+    else:
+        # Default: chronological sorting for pagination
+        query = query.order_by(models.Member.created_at.asc(), models.Member.id.asc())
     
     # Apply limit
     members = query.limit(limit).all()
@@ -376,6 +434,11 @@ async def create_member(
     # Validate member data against tree settings
     _validate_member_against_settings(member_data, tree, db_session)
     
+    # Check for duplicate email if email is provided
+    if member_data.email:
+        from utils.validation import validate_unique_member_email
+        validate_unique_member_email(db_session, member_data.email)
+    
     # Create member
     new_member = models.Member(
         tree_id=tree_id,
@@ -439,6 +502,11 @@ async def update_member(
                 detail="Date of birth must be in ISO 8601 format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)"
             )
     
+    # Check for duplicate email if email is being updated
+    if hasattr(member_data, 'email') and member_data.email and member_data.email != member.email:
+        from utils.validation import validate_unique_member_email
+        validate_unique_member_email(db_session, member_data.email, exclude_member_id=member_id)
+    
     # Update fields
     update_data = member_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -450,6 +518,9 @@ async def update_member(
     
     db_session.commit()
     db_session.refresh(member)
+    
+    # Sync member data back to user if unified identity
+    sync_member_data_to_user(member, db_session)
     
     logger.info(f"Updated member {member_id} by user {current_user.id}")
     

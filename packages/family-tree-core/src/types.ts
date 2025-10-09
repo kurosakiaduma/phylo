@@ -1,26 +1,22 @@
+// packages/family-tree-core
 export type MemberId = string;
-
-export type Gender = 'male' | 'female' | 'unspecified' | string;
-
 export interface MemberInput {
   name: string;
   email?: string;
-  dob?: string; // ISO date
-  gender?: Gender;
+  dob?: string;
+  gender?: 'male' | 'female' | 'other' | 'prefer not to say' |'unspecified';
   deceased?: boolean;
   notes?: string;
 }
-
 export interface Member extends MemberInput {
   id: MemberId;
   spouseIds: MemberId[];
   parentIds: MemberId[];
   childIds: MemberId[];
 }
-
 export interface TreeSettings {
   allowSameSex: boolean;
-  monogamy: boolean; // if true, only single spouse allowed
+  monogamy: boolean;
   allowPolygamy: boolean;
   maxSpousesPerMember?: number;
   allowSingleParent: boolean;
@@ -35,4 +31,16 @@ export interface Tree {
   settings: TreeSettings;
 }
 
-export type RelationshipType = 'spouse' | 'parent' | 'child' | 'sibling' | 'unknown';
+export type RelationshipType =
+  | 'spouse'
+  | 'parent'
+  | 'child'
+  | 'sibling'
+  | 'cousin'
+  | 'aunt'
+  | 'uncle'
+  | 'grandparent'
+  | 'grandchild'
+  | 'great-grandparent'
+  | 'great-grandchild'
+  | 'in-law';

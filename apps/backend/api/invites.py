@@ -158,12 +158,13 @@ async def send_invite(
             )
     
     # Check for existing active invite
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
     existing_invite = db_session.query(models.Invite).filter(
         and_(
             models.Invite.tree_id == invite_data.tree_id,
             models.Invite.email == invite_data.email,
             models.Invite.accepted_at.is_(None),
-            models.Invite.expires_at > datetime.now(timezone.utc).astimezone(pytz.timezone('Africa/Nairobi'))
+            models.Invite.expires_at > now_naive
         )
     ).first()
     
@@ -175,14 +176,17 @@ async def send_invite(
     
     # Generate token and create invite
     token = _generate_invite_token()
-    expires_at = datetime.now(timezone.utc).astimezone(pytz.timezone('Africa/Nairobi')) + timedelta(days=INVITE_EXPIRY_DAYS)
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=INVITE_EXPIRY_DAYS)
     
     invite = models.Invite(
         tree_id=invite_data.tree_id,
+        member_id=invite_data.member_id,
         email=invite_data.email,
         role=invite_data.role,
         token=token,
-        expires_at=expires_at
+        expires_at=expires_at,
+        resend_count=0,
+        created_by=current_user.id
     )
     
     db_session.add(invite)
@@ -264,37 +268,32 @@ async def resend_invite(
             detail="This invitation has already been accepted"
         )
     
-    # Check resend count (stored in a hypothetical resend_count column)
-    # For now, we'll count by looking at created invites with same email/tree
-    resend_count = db_session.query(models.Invite).filter(
-        and_(
-            models.Invite.tree_id == invite.tree_id,
-            models.Invite.email == invite.email,
-            models.Invite.accepted_at.is_(None)
-        )
-    ).count()
-    
-    if resend_count > MAX_RESENDS:
+    # Check resend count
+    if invite.resend_count >= MAX_RESENDS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Maximum resend limit ({MAX_RESENDS}) reached for this invitation"
+            detail=f"Maximum resend limit ({MAX_RESENDS}) reached for this invitation. Please delete and create a new invitation."
         )
     
     # If expired, create new invite
-    if invite.expires_at < datetime.now(timezone.utc).astimezone(pytz.timezone('Africa/Nairobi')):
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    if invite.expires_at < now_naive:
         # Mark old invite as expired in logs
         logger.info(f"Creating new invite to replace expired invite {invite.id}")
         
         # Create new invite
         new_token = _generate_invite_token()
-        new_expires_at = datetime.now(timezone.utc).astimezone(pytz.timezone('Africa/Nairobi')) + timedelta(days=INVITE_EXPIRY_DAYS)
+        new_expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=INVITE_EXPIRY_DAYS)
         
         new_invite = models.Invite(
             tree_id=invite.tree_id,
+            member_id=invite.member_id,
             email=invite.email,
             role=invite.role,
             token=new_token,
-            expires_at=new_expires_at
+            expires_at=new_expires_at,
+            resend_count=invite.resend_count + 1,
+            created_by=invite.created_by
         )
         
         db_session.add(new_invite)
@@ -303,6 +302,10 @@ async def resend_invite(
         
         invite = new_invite
         token = new_token
+    else:
+        # Just increment resend count for existing invite
+        invite.resend_count += 1
+        db_session.commit()
     
     # Resend email
     background_tasks.add_task(
@@ -331,16 +334,16 @@ async def resend_invite(
     "/invites/{token}",
     response_model=schemas.InviteDetail,
     summary="View invitation details",
-    description="View invitation details by token. Public endpoint (no auth required)."
+    description="View invitation details by token. Public endpoint for frontend proxy."
 )
 async def get_invite(
     token: str,
     db_session: Session = Depends(db.get_db)
 ):
-    """View invitation details.
+    """View invitation details for frontend proxy.
     
-    Public endpoint - allows users to view invite before accepting.
-    Does not require authentication.
+    Public endpoint - allows frontend to display invite info while user waits.
+    Used by the frontend loading/waiting UI to show invite context.
     
     Args:
         token: Invite token
@@ -372,7 +375,8 @@ async def get_invite(
         )
     
     # Check if expired
-    if invite.expires_at < datetime.utcnow():
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    if invite.expires_at < now_naive:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This invitation has expired. Please contact the tree custodian for a new invite."
@@ -389,12 +393,21 @@ async def get_invite(
             detail="Associated tree not found"
         )
     
-    # Get creator details
+    # Get creator details for inviter name
     creator = db_session.query(models.User).filter(
-        models.User.id == tree.created_by
+        models.User.id == invite.created_by
     ).first()
     
-    # Build response
+    # Get member name if member_id exists (for better UX)
+    member_name = None
+    if invite.member_id:
+        member = db_session.query(models.Member).filter(
+            models.Member.id == invite.member_id
+        ).first()
+        if member:
+            member_name = member.name
+    
+    # Build response with enhanced data for frontend
     return schemas.InviteDetail(
         id=invite.id,
         tree_id=invite.tree_id,
@@ -405,7 +418,8 @@ async def get_invite(
         token=invite.token,
         expires_at=invite.expires_at,
         created_at=invite.created_at,
-        inviter_name=creator.display_name if creator else None
+        inviter_name=creator.display_name if creator else None,
+        member_name=member_name  # For "Hi {name}, we are getting your account ready"
     )
 
 
@@ -458,7 +472,8 @@ async def accept_invite(
         )
     
     # Check if expired
-    if invite.expires_at < datetime.utcnow():
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    if invite.expires_at < now_naive:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This invitation has expired"
@@ -485,6 +500,114 @@ async def accept_invite(
             detail="You are already a member of this tree"
         )
     
+    # Handle unified ID system: ensure member record uses user's ID
+    existing_member = db_session.query(models.Member).filter(
+        and_(
+            models.Member.email == current_user.email,
+            models.Member.tree_id == invite.tree_id
+        )
+    ).first()
+    
+    if existing_member and existing_member.id != current_user.id:
+        # Case 1: User signed up via Get Started, now accepting invite
+        # We need to merge the existing member into the user's identity
+        old_member_id = existing_member.id
+        
+        # Check if there's already a member with the user's ID in this tree
+        user_member = db_session.query(models.Member).filter(
+            and_(
+                models.Member.id == current_user.id,
+                models.Member.tree_id == invite.tree_id
+            )
+        ).first()
+        
+        if user_member:
+            # Merge existing_member into user_member, then delete existing_member
+            # Update relationships that reference the old member ID
+            db_session.query(models.Relationship).filter(
+                models.Relationship.a_member_id == old_member_id
+            ).update({models.Relationship.a_member_id: current_user.id})
+            
+            db_session.query(models.Relationship).filter(
+                models.Relationship.b_member_id == old_member_id
+            ).update({models.Relationship.b_member_id: current_user.id})
+            
+            # Update invites that reference the old member
+            db_session.query(models.Invite).filter(
+                models.Invite.member_id == old_member_id
+            ).update({models.Invite.member_id: current_user.id})
+            
+            # Merge data from existing_member into user_member (keep most complete data)
+            user_member.name = user_member.name or existing_member.name
+            user_member.avatar_url = user_member.avatar_url or existing_member.avatar_url
+            user_member.dob = user_member.dob or existing_member.dob
+            user_member.gender = user_member.gender or existing_member.gender
+            user_member.pronouns = user_member.pronouns or existing_member.pronouns
+            user_member.bio = user_member.bio or existing_member.bio
+            
+            # Delete the duplicate member
+            db_session.delete(existing_member)
+            
+            logger.info(f"Merged duplicate member {old_member_id} into user member {current_user.id} in tree {invite.tree_id}")
+        else:
+            # Create new member with user's ID and merge data from existing member
+            new_member = models.Member(
+                id=current_user.id,
+                tree_id=invite.tree_id,
+                name=existing_member.name or current_user.display_name or current_user.email.split('@')[0],
+                email=current_user.email,
+                avatar_url=existing_member.avatar_url or current_user.avatar_url,
+                dob=existing_member.dob or current_user.dob,
+                gender=existing_member.gender or current_user.gender,
+                pronouns=existing_member.pronouns or current_user.pronouns,
+                bio=existing_member.bio or current_user.bio,
+                deceased=existing_member.deceased,
+                birth_place=existing_member.birth_place,
+                death_place=existing_member.death_place,
+                occupation=existing_member.occupation,
+                notes=existing_member.notes,
+                updated_by=current_user.id
+            )
+            
+            db_session.add(new_member)
+            
+            # Update relationships that reference the old member ID
+            db_session.query(models.Relationship).filter(
+                models.Relationship.a_member_id == old_member_id
+            ).update({models.Relationship.a_member_id: current_user.id})
+            
+            db_session.query(models.Relationship).filter(
+                models.Relationship.b_member_id == old_member_id
+            ).update({models.Relationship.b_member_id: current_user.id})
+            
+            # Update invites that reference the old member
+            db_session.query(models.Invite).filter(
+                models.Invite.member_id == old_member_id
+            ).update({models.Invite.member_id: current_user.id})
+            
+            # Delete the old member
+            db_session.delete(existing_member)
+            
+            logger.info(f"Created new member with user ID {current_user.id} and merged data from {old_member_id} in tree {invite.tree_id}")
+        
+    elif not existing_member:
+        # Case 2: No member record exists, create one with user's ID
+        new_member = models.Member(
+            id=current_user.id,
+            tree_id=invite.tree_id,
+            name=current_user.display_name or current_user.email.split('@')[0],
+            email=current_user.email,
+            avatar_url=current_user.avatar_url,
+            dob=current_user.dob,
+            gender=current_user.gender,
+            pronouns=current_user.pronouns,
+            bio=current_user.bio,
+            updated_by=current_user.id
+        )
+        
+        db_session.add(new_member)
+        logger.info(f"Created new member record with user ID {current_user.id} in tree {invite.tree_id}")
+    
     # Create membership
     membership = models.Membership(
         user_id=current_user.id,
@@ -495,7 +618,7 @@ async def accept_invite(
     db_session.add(membership)
     
     # Mark invite as accepted
-    invite.accepted_at = datetime.utcnow()
+    invite.accepted_at = datetime.now(timezone.utc).replace(tzinfo=None)
     
     db_session.commit()
     db_session.refresh(membership)
@@ -563,7 +686,8 @@ async def list_tree_invites(
         query = query.filter(models.Invite.accepted_at.is_(None))
     
     if not include_expired:
-        query = query.filter(models.Invite.expires_at > datetime.utcnow())
+        now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        query = query.filter(models.Invite.expires_at > now_naive)
     
     # Order by creation date (newest first)
     invites = query.order_by(models.Invite.created_at.desc()).all()
