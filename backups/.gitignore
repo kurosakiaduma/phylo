@@ -1,0 +1,10 @@
+# Ignore all backup files
+*.dump
+*.sql
+*.sql.gz
+
+# But keep the scripts
+!*.fish
+!*.sh
+!README.md
+!.gitignore

@@ -93,6 +93,7 @@ npm install
 npm run dev
 
 # open http://localhost:3000 - Advanced Tree Visualization System
+
 # Features: Intelligent clustering, Bezier curves, real-time validation
 
 cd -
@@ -112,6 +113,7 @@ source .venv/bin/activate.fish
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 
 # API available at http://localhost:8000
+
 # Interactive docs at http://localhost:8000/docs
 
 cd -
