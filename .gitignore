@@ -5,3 +5,22 @@ __pycache__
 *PHASE*.md
 .specs
 *.txt
+
+# Documentation and summary files
+*.md
+!README.md
+!apps/*/README.md
+
+# Git artifacts
+HEAD
+config
+description
+echo
+hooks/
+info/
+
+# Test files
+test_*.py
+
+# Temporary files
+.gitkeep
