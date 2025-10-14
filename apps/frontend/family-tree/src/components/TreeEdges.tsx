@@ -288,7 +288,7 @@ export function TreeEdges({
   onRelationshipAnalyze,
   onConnectionHighlight: externalConnectionHighlight,
 }: TreeEdgesProps) {
-  const [selectedConnections, setSelectedConnections] = useState<Set<string>>(
+  const [selectedConnections] = useState<Set<string>>(
     new Set(),
   )
   const [highlightedConnection, setHighlightedConnection] = useState<

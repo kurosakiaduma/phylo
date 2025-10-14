@@ -195,7 +195,7 @@ export function AuthModal({
     if (mode === 'register') return 'Create your Phylo account to get started.'
     if (authMode === 'login') return 'Welcome back! Sign in to continue.'
     if (authMode === 'register')
-      return "We'll create your account and send a verification code."
+      return "We&apos;ll create your account and send a verification code."
     return 'Enter your email to sign in or create an account.'
   }
 
@@ -251,10 +251,10 @@ export function AuthModal({
               <div className="p-3 rounded-lg bg-muted">
                 <p className="text-sm">
                   {authMode === 'login' ? (
-                    <>✓ Account found. We'll send you a sign-in code.</>
+                    <>✓ Account found. We&apos;ll send you a sign-in code.</>
                   ) : (
                     <>
-                      🆕 New user. We'll create your account and send a
+                      🆕 New user. We&apos;ll create your account and send a
                       verification code.
                     </>
                   )}
@@ -263,7 +263,7 @@ export function AuthModal({
             )}
 
             <div className="flex gap-2">
-              {(authMode || step === 'otp') && (
+              {(authMode === 'login' || authMode === 'register' || step === 'otp') && (
                 <Button
                   type="button"
                   variant="outline"
@@ -290,7 +290,7 @@ export function AuthModal({
 
             {mode === 'auto' && !authMode && (
               <p className="text-center text-sm text-muted-foreground">
-                We'll check if you have an account and guide you accordingly
+                We&apos;ll check if you have an account and guide you accordingly
               </p>
             )}
           </form>
