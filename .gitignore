@@ -24,3 +24,7 @@ test_*.py
 
 # Temporary files
 .gitkeep
+
+# Files with spaces
+"considerations.txt "
+considerations.txt*
