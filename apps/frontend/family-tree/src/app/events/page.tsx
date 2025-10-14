@@ -101,7 +101,7 @@ export default function EventsPage() {
                 Select a Family Tree
               </CardTitle>
               <CardDescription>
-                Choose which family tree's events you'd like to view
+                Choose which family tree&apos;s events you&apos;d like to view
               </CardDescription>
             </CardHeader>
             <CardContent>

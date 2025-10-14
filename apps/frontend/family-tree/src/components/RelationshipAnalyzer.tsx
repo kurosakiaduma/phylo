@@ -8,7 +8,6 @@ import { useState, useEffect } from 'react'
 import { TreeMember } from '@/types/member'
 import {
   useRelationshipAnalyzer,
-  RelationshipResult,
 } from '@/hooks/use-relationship-analyzer'
 import {
   Dialog,
@@ -722,7 +721,7 @@ function getReverseRelationship(relationship: string, gender?: string): string {
  */
 function getMaternalPaternalInfo(
   pathNames: string[],
-  members: TreeMember[],
+  _members: TreeMember[],
 ): string {
   if (pathNames.length < 3) return 'Direct relationship'
 

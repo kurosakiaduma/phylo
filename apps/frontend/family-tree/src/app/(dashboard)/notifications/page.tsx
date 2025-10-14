@@ -14,7 +14,7 @@ import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { DashboardLayout } from '@/components/dashboard-layout'
-import { useAuth } from '@/hooks/use-auth'
+
 import { useToast } from '@/hooks/use-toast'
 import {
   Loader2,
@@ -22,8 +22,6 @@ import {
   Calendar,
   Image,
   Users,
-  Heart,
-  Gift,
   Info,
 } from 'lucide-react'
 
@@ -44,7 +42,6 @@ interface NotificationSettings {
 }
 
 export default function NotificationsPage() {
-  const { user } = useAuth()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -170,7 +167,7 @@ export default function NotificationsPage() {
                 <Bell className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No Family Trees</h3>
                 <p className="text-muted-foreground">
-                  You haven't joined any family trees yet. Join or create a tree
+                  You haven&apos;t joined any family trees yet. Join or create a tree
                   to manage notifications.
                 </p>
               </div>

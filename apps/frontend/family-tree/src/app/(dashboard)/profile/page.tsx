@@ -36,11 +36,20 @@ import {
   Heart,
 } from 'lucide-react'
 
+interface Tree {
+  id: string
+  name: string
+  description?: string
+  role: string
+  member_count?: number
+  joined_at: string
+}
+
 export default function ProfilePage() {
   const { user, setUser } = useAuth()
   const { toast } = useToast()
   const [isUpdating, setIsUpdating] = useState(false)
-  const [userTrees, setUserTrees] = useState([])
+  const [userTrees, setUserTrees] = useState<Tree[]>([])
   const [isLoadingTrees, setIsLoadingTrees] = useState(false)
 
   // Form state - Profile fields
@@ -585,7 +594,7 @@ export default function ProfilePage() {
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">
                     <Heart className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                    <p>You haven't joined any family trees yet</p>
+                    <p>You haven&apos;t joined any family trees yet</p>
                     <p className="text-sm">
                       Create a new tree or accept an invitation to get started
                     </p>

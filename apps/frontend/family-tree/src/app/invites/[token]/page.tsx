@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import { PhyloLogo } from '@/components/ui/phylo-logo'
 import { AuthModal } from '@/components/auth/auth-modal'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
+import { TreeMember } from '@/types/member'
 
 interface InviteDetail {
   id: string
@@ -58,23 +59,7 @@ export default function InviteAcceptPage() {
   const [loginOpen, setLoginOpen] = useState(false)
   const [emailMismatch, setEmailMismatch] = useState(false)
 
-  useEffect(() => {
-    if (token) {
-      fetchInviteDetails()
-    }
-  }, [token])
-
-  // Check for email mismatch when user changes
-  useEffect(() => {
-    if (user && invite) {
-      const mismatch = user.email.toLowerCase() !== invite.email.toLowerCase()
-      setEmailMismatch(mismatch)
-    } else {
-      setEmailMismatch(false)
-    }
-  }, [user, invite])
-
-  const fetchInviteDetails = async () => {
+  const fetchInviteDetails = useCallback(async () => {
     try {
       setLoading(true)
       const response = await fetch(
@@ -94,14 +79,30 @@ export default function InviteAcceptPage() {
         const errorData = await response.json()
         setError(errorData.detail || 'Invitation not found or expired')
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load invitation details')
     } finally {
       setLoading(false)
     }
-  }
+  }, [token])
 
-  const handleAcceptInvite = async () => {
+  useEffect(() => {
+    if (token) {
+      fetchInviteDetails()
+    }
+  }, [token, fetchInviteDetails])
+
+  // Check for email mismatch when user changes
+  useEffect(() => {
+    if (user && invite) {
+      const mismatch = user.email.toLowerCase() !== invite.email.toLowerCase()
+      setEmailMismatch(mismatch)
+    } else {
+      setEmailMismatch(false)
+    }
+  }, [user, invite])
+
+  const handleAcceptInvite = useCallback(async () => {
     if (!user) {
       // Store return URL and open auth modal with invite email
       sessionStorage.setItem('redirectAfterLogin', window.location.pathname)
@@ -124,19 +125,19 @@ export default function InviteAcceptPage() {
         )
 
         if (response.ok) {
-          const members = await response.json()
-          const existingMember = members.find((m: any) => m.id === user.id)
+          const members: TreeMember[] = await response.json()
+          const existingMember = members.find((m) => m.id === user.id)
 
           if (existingMember) {
             toast({
               title: 'Already a Member',
-              description: `You're already a member of ${invite.tree_name}. Redirecting to the tree...`,
+              description: `You&apos;re already a member of ${invite.tree_name}. Redirecting to the tree...`,
             })
             router.push(`/trees/${invite.tree_id}`)
             return
           }
         }
-      } catch (error) {
+      } catch (e) {
         // Continue with normal flow if check fails
       }
     }
@@ -145,7 +146,7 @@ export default function InviteAcceptPage() {
     if (emailMismatch) {
       toast({
         title: 'Email Mismatch',
-        description: `This invitation is for ${invite?.email}, but you're logged in as ${user.email}. Please sign out and sign in with the correct email.`,
+        description: `This invitation is for ${invite?.email}, but you&apos;re logged in as ${user.email}. Please sign out and sign in with the correct email.`,
         variant: 'destructive',
       })
       return
@@ -167,7 +168,7 @@ export default function InviteAcceptPage() {
       if (response.ok) {
         toast({
           title: 'Welcome to the family!',
-          description: `You've successfully joined ${invite?.tree_name} as a ${invite?.role}.`,
+          description: `You&apos;ve successfully joined ${invite?.tree_name} as a ${invite?.role}.`,
         })
 
         // Redirect to the tree
@@ -180,7 +181,7 @@ export default function InviteAcceptPage() {
           variant: 'destructive',
         })
       }
-    } catch (err) {
+    } catch (e) {
       toast({
         title: 'Error',
         description: 'Failed to accept invitation. Please try again.',
@@ -189,7 +190,7 @@ export default function InviteAcceptPage() {
     } finally {
       setAccepting(false)
     }
-  }
+  }, [user, invite, emailMismatch, token, router, toast])
 
   if (loading || authLoading) {
     return (
@@ -212,7 +213,7 @@ export default function InviteAcceptPage() {
                   Getting things ready...
                 </h1>
                 <p className="text-muted-foreground">
-                  We're preparing your invitation details
+                  We&apos;re preparing your invitation details
                 </p>
               </div>
 
@@ -298,7 +299,7 @@ export default function InviteAcceptPage() {
                 </span>{' '}
                 account ready in the{' '}
                 <span className="font-semibold text-green-600 dark:text-green-400">
-                  '{invite.tree_name}'
+                  &apos;{invite.tree_name}&apos;
                 </span>{' '}
                 Phylo.
               </p>
@@ -358,7 +359,7 @@ export default function InviteAcceptPage() {
                     </h4>
                     <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
                       This invitation is for <strong>{invite?.email}</strong>,
-                      but you're signed in as <strong>{user?.email}</strong>.
+                      but you&apos;re signed in as <strong>{user?.email}</strong>.
                     </p>
                   </div>
                 </div>
@@ -426,7 +427,7 @@ export default function InviteAcceptPage() {
             {/* Animated Features Preview */}
             <div className="bg-muted rounded-lg p-6 space-y-4">
               <h4 className="font-medium text-foreground">
-                What you'll get access to:
+                What you&apos;ll get access to:
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center space-x-2">

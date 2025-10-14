@@ -259,11 +259,13 @@ export class FamilyTree {
   }
 
   public getMemberNames(): string[] {
-    let memberNames: string[] = []
+    const memberNames: string[] = []
 
     this.traverse((currentMember: Member) => {
       memberNames.push(currentMember.name)
-      currentMember?.spouse && memberNames.push(currentMember?.spouse.name)
+      if (currentMember?.spouse) {
+        memberNames.push(currentMember.spouse.name);
+      }
     })
 
     return memberNames
@@ -430,7 +432,9 @@ export class FamilyTree {
     return fatherSiblings.reduce(
       (paternalUncles: Member[], sibling: Member) => {
         const uncle = isMale(sibling) ? sibling : sibling.spouse
-        uncle && paternalUncles.push(uncle)
+        if (uncle) {
+          paternalUncles.push(uncle);
+        }
         return paternalUncles
       },
       [],
@@ -446,7 +450,9 @@ export class FamilyTree {
     return motherSiblings.reduce(
       (maternalUncles: Member[], sibling: Member) => {
         const uncle = isMale(sibling) ? sibling : sibling.spouse
-        uncle && maternalUncles.push(uncle)
+        if (uncle) {
+          maternalUncles.push(uncle);
+        }
 
         return maternalUncles
       },
@@ -462,7 +468,9 @@ export class FamilyTree {
 
     return fatherSiblings.reduce((paternalAunts: Member[], sibling: Member) => {
       const aunt = isFemale(sibling) ? sibling : sibling.spouse
-      aunt && paternalAunts.push(aunt)
+      if (aunt) {
+        paternalAunts.push(aunt);
+      }
       return paternalAunts
     }, [])
   }
@@ -474,7 +482,9 @@ export class FamilyTree {
     const motherSiblings = this.siblings(mother.name)
     return motherSiblings.reduce((maternalAunts: Member[], sibling: Member) => {
       const aunts = isFemale(sibling) ? sibling : sibling.spouse
-      aunts && maternalAunts.push(aunts)
+      if (aunts) {
+        maternalAunts.push(aunts);
+      }
 
       return maternalAunts
     }, [])
@@ -485,11 +495,15 @@ export class FamilyTree {
 
     // get spouse's sisters
     const spouse = this.spouse(name)
-    spouse && sisterInLaws.push(...this.sisters(spouse.name))
+    if (spouse) {
+      sisterInLaws.push(...this.sisters(spouse.name));
+    }
 
     // get wives of borthers
     const brothers = this.brothers(name)
-    brothers && sisterInLaws.push(...(brothers.map(getSpouse) as Member[]))
+    if (brothers) {
+      sisterInLaws.push(...(brothers.map(getSpouse) as Member[]));
+    }
 
     return sisterInLaws
   }
@@ -499,11 +513,15 @@ export class FamilyTree {
 
     // get spouse's brothers
     const spouse = this.spouse(name)
-    spouse && brotherInLaws.push(...this.brothers(spouse.name))
+    if (spouse) {
+      brotherInLaws.push(...this.brothers(spouse.name));
+    }
 
     // get husbands of sisters
     const sisters = this.sisters(name)
-    sisters && brotherInLaws.push(...(sisters.map(getSpouse) as Member[]))
+    if (sisters) {
+      brotherInLaws.push(...(sisters.map(getSpouse) as Member[]));
+    }
 
     return brotherInLaws
   }

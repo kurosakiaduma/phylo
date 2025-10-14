@@ -108,12 +108,12 @@ export default function NewTreePage() {
       })
 
       router.push(`/trees/${newTree.id}`)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating tree:', error)
       toast({
         title: 'Error',
         description:
-          error.message || 'Failed to create tree. Please try again.',
+          error instanceof Error ? error.message : 'Failed to create tree. Please try again.',
         variant: 'destructive',
       })
     } finally {
@@ -225,7 +225,7 @@ export default function NewTreePage() {
             <CardHeader>
               <CardTitle>Inclusive Settings</CardTitle>
               <CardDescription>
-                Configure your tree to reflect your family's unique structure
+                Configure your tree to reflect your family&apos;s unique structure
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">

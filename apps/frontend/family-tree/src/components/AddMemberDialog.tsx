@@ -142,7 +142,7 @@ export function AddMemberDialog({
       const baseUrl =
         process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8050/api'
 
-      let targetMember: any
+      let targetMember: { id: string; name?: string };
 
       if (formData.useExistingMember && formData.selectedExistingMemberId) {
         // Use existing member
@@ -561,7 +561,7 @@ export function AddMemberDialog({
                       Become co-parent to existing children
                     </Label>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Add this spouse as a parent to {relativeTo?.name}'s
+                      Add this spouse as a parent to {relativeTo?.name}&apos;s
                       existing children
                     </p>
                   </div>

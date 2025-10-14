@@ -52,7 +52,11 @@ const SearchMember = () => {
         setResult([])
         return
       }
-      Array.isArray(response) ? setResult(response) : setResult([response])
+      if (Array.isArray(response)) {
+        setResult(response);
+      } else {
+        setResult([response]);
+      }
     } catch (error) {
       alert(error)
     }

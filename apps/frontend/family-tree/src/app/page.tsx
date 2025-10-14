@@ -79,7 +79,7 @@ export default function LandingPage() {
     {
       title: 'Privacy First',
       content:
-        "Your family data is private and secure. You control who can view and edit your tree, ensuring your family's privacy is always protected.",
+        "Your family data is private and secure. You control who can view and edit your tree, ensuring your family&apos;s privacy is always protected.",
       image: '🔒',
       color: 'from-purple-500/10 to-pink-500/10',
     },
@@ -291,7 +291,7 @@ export default function LandingPage() {
               </h1>
 
               <p className="text-lg md:text-xl lg:text-2xl text-gray-600 dark:text-gray-300 mb-3 lg:mb-4 leading-relaxed animate-fade-in-delay-1">
-                Discover, preserve, and share your family's story
+                Discover, preserve, and share your family&apos;s story
               </p>
 
               <p className="text-base lg:text-lg text-gray-500 dark:text-gray-400 mb-6 lg:mb-0 max-w-xl mx-auto lg:mx-0 animate-fade-in-delay-2">

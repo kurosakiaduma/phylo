@@ -18,10 +18,8 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { RelationshipAnalyzer } from '@/components/RelationshipAnalyzer'
 import {
-  User,
   Mail,
   Calendar,
-  MapPin,
   Briefcase,
   Heart,
   Users,

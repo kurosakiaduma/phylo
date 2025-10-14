@@ -348,7 +348,7 @@ export default function GalleryPage() {
                 More Gallery Features Coming Soon
               </h3>
               <p className="text-sm text-muted-foreground mb-4">
-                We're working on adding photo uploads, albums, and more gallery
+                We&apos;re working on adding photo uploads, albums, and more gallery
                 features. Currently showing profile photos from family members.
               </p>
               <div className="flex flex-wrap gap-2 justify-center">

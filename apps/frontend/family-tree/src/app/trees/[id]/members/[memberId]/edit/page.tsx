@@ -134,7 +134,7 @@ export default function EditMemberPage() {
         process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8050/api'
 
       // Prepare payload (only include changed fields)
-      const payload: any = {
+      const payload: Partial<MemberFormData> = {
         name: formData.name.trim(),
       }
 

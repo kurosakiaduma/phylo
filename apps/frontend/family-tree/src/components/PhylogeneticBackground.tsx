@@ -70,8 +70,8 @@ export function PhylogeneticBackground({
 
       // Add subtle horizontal swaying motion (wind effect)
       gsap.to(leaf, {
-        x: `+=${Math.random() * 40 - 20}`,
-        duration: 3 + Math.random() * 2,
+        x: `+=${(Math.random() * 40 - 20) * windStrength}`,
+        duration: (3 + Math.random() * 2) / windStrength,
         repeat: -1,
         yoyo: true,
         ease: 'sine.inOut',

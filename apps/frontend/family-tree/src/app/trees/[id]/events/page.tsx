@@ -176,6 +176,9 @@ export default function EventsPage() {
         eventDay,
       )
 
+      // Check if event is in current month or upcoming months
+      const isCurrentMonth = eventMonth === currentMonth && eventDay >= currentDay
+
       const daysUntilThisYear = Math.ceil(
         (eventThisYear.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
       )
@@ -184,6 +187,7 @@ export default function EventsPage() {
       )
 
       return (
+        isCurrentMonth ||
         (daysUntilThisYear >= 0 && daysUntilThisYear <= 30) ||
         (daysUntilNextYear >= 0 && daysUntilNextYear <= 30)
       )

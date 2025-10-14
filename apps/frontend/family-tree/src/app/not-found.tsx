@@ -30,7 +30,7 @@ export default function NotFound() {
 
         {/* Description */}
         <p className="mx-auto max-w-md text-lg text-gray-600 dark:text-gray-300">
-          We couldn't find the family tree branch you're looking for. It might
+          We couldn&apos;t find the family tree branch you&apos;re looking for. It might
           have been moved, deleted, or never existed.
         </p>
 

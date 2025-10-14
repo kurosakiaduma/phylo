@@ -36,6 +36,9 @@ export function GeneticParticles({
 
     const container = containerRef.current
     const particles: HTMLElement[] = []
+    
+    // Initialize particles data
+    particlesRef.current = []
 
     // Create simple visible particles for testing
     for (let i = 0; i < particleCount; i++) {
@@ -47,6 +50,17 @@ export function GeneticParticles({
       particle.style.opacity = '0'
       container.appendChild(particle)
       particles.push(particle)
+      
+      // Store particle data in ref
+      particlesRef.current.push({
+        x: Math.random() * 100,
+        y: Math.random() * 100,
+        vx: (Math.random() - 0.5) * 2,
+        vy: (Math.random() - 0.5) * 2,
+        element: particle as HTMLDivElement,
+        life: 0,
+        maxLife: 100
+      })
 
       // Simple pulsing animation
       gsap.fromTo(
@@ -79,14 +93,24 @@ export function GeneticParticles({
       })
     }
 
+    // Store animation reference for cleanup
+    animationRef.current = requestAnimationFrame(function animate() {
+      // Animation loop could be added here if needed
+      animationRef.current = requestAnimationFrame(animate)
+    })
+
     // Cleanup
     return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current)
+      }
       particles.forEach((particle) => {
         gsap.killTweensOf(particle)
         if (particle.parentNode) {
           particle.parentNode.removeChild(particle)
         }
       })
+      particlesRef.current = []
     }
   }, [particleCount, opacity])
 

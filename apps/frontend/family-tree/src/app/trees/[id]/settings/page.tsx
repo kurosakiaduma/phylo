@@ -249,11 +249,11 @@ export default function TreeSettingsPage() {
 
       // Refresh tree data
       router.refresh()
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating settings:', error)
       toast({
         title: 'Error',
-        description: error.message || 'Failed to update settings',
+        description: error instanceof Error ? error.message : 'Failed to update settings',
         variant: 'destructive',
       })
     } finally {

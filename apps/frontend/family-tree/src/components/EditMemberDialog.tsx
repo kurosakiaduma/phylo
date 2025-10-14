@@ -528,7 +528,7 @@ export function EditMemberDialog({
 
       // Create update payload that matches MemberUpdate interface
       // Filter out empty strings and undefined values
-      const updatePayload: Record<string, any> = {}
+      const updatePayload: Partial<TreeMember> = {}
 
       // Only include fields that have values or are explicitly set
       if (formData.name?.trim()) updatePayload.name = formData.name.trim()

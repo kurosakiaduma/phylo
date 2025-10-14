@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, Mail, User, UserCheck } from 'lucide-react'
+import { Loader2, Mail } from 'lucide-react'
 
 interface SendInviteDialogProps {
   open: boolean
@@ -91,12 +91,9 @@ export function SendInviteDialog({
         if (!updateResponse.ok) {
           if (updateResponse.status === 400) {
             const errorData = await updateResponse.json()
-            console.log(
-              '[SendInviteDialog] Error updating member email:',
-              errorData,
-            )
-            throw new Error(
-              "The email you've provided is either a duplicate or invalid.",
+
+            throw new Error(errorData.detail ||
+              "The email you&apos;ve provided is either a duplicate or invalid.",
             )
           }
           throw new Error('Failed to update member email. A')
@@ -137,7 +134,7 @@ export function SendInviteDialog({
       setEmailInput('')
       onInviteSent()
     } catch (error) {
-      console.error('Error sending invite:', error)
+
       toast({
         title: 'Error',
         description:
@@ -215,7 +212,7 @@ export function SendInviteDialog({
                     onChange={(e) => setEmailInput(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    This email will be saved to the member's profile
+                    This email will be saved to the member&apos;s profile
                   </p>
                 </div>
               )}

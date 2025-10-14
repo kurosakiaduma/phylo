@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Switch } from '@/components/ui/switch'
+
 import {
   Select,
   SelectContent,
@@ -41,7 +41,7 @@ import {
   Loader2,
   Moon,
   Sun,
-  Bell,
+
   Shield,
   Database,
   Trash2,

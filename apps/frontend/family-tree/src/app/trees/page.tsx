@@ -143,7 +143,7 @@ export default function TreesPage() {
             </DialogTitle>
             <DialogDescription className="space-y-4 pt-4">
               <p>
-                Welcome to your family tree dashboard! Here's what you can do:
+                Welcome to your family tree dashboard! Here&apos;s what you can do:
               </p>
 
               <div className="space-y-3">

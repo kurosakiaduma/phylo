@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import Link from 'next/link'
+import React from 'react'
 import {
   CheckCircle2,
   Clock,
@@ -29,7 +30,7 @@ interface Feature {
   title: string
   description: string
   status: 'completed' | 'in-progress' | 'planned' | 'future'
-  icon: any
+  icon: React.ElementType;
   category: 'core' | 'ux' | 'data' | 'infrastructure' | 'community'
   estimatedRelease?: string
 }

@@ -283,7 +283,7 @@ export default function MembersPage() {
               {/* Status Filter */}
               <Tabs
                 value={statusFilter}
-                onValueChange={(v) => setStatusFilter(v as any)}
+                onValueChange={(v) => setStatusFilter(v as 'all' | 'alive' | 'deceased')}
               >
                 <TabsList>
                   <TabsTrigger value="all">All</TabsTrigger>

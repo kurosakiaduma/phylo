@@ -19,6 +19,7 @@ import { TreeCanvas } from '@/components/TreeCanvas'
 import { MemberDrawer } from '@/components/MemberDrawer'
 import { AddMemberDialog } from '@/components/AddMemberDialog'
 import { EditMemberDialog } from '@/components/EditMemberDialog'
+import { RelationshipAnalyzer } from '@/components/RelationshipAnalyzer'
 import { useTreeMembers } from '@/hooks/use-tree-members'
 import { TreeMember } from '@/types/member'
 import {
@@ -32,11 +33,21 @@ import {
 } from 'lucide-react'
 import { useTreeKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 
+interface TreeSettings {
+  allowSameSex: boolean;
+  allowPolygamy: boolean;
+  monogamy: boolean;
+  allowSingleParent: boolean;
+  allowMultiParentChildren: boolean;
+  maxParentsPerChild?: number;
+  maxSpousesPerMember?: number;
+}
+
 interface Tree {
   id: string
   name: string
   description?: string
-  settings: any
+  settings: TreeSettings
   created_by: string
   created_at: string
   user_role: 'custodian' | 'contributor' | 'viewer'
@@ -189,6 +200,11 @@ export default function TreeDetailPage() {
     toMemberId: string,
   ) => {
     setRelationshipAnalyzerMembers({ fromMemberId, toMemberId })
+    // Set the selected member to the fromMember for the analyzer
+    const fromMember = members.find(m => m.id === fromMemberId)
+    if (fromMember) {
+      setSelectedMember(fromMember)
+    }
     setRelationshipAnalyzerOpen(true)
   }
 
@@ -307,7 +323,7 @@ export default function TreeDetailPage() {
                             Add Yourself
                           </Button>
                           <p className="text-xs text-muted-foreground">
-                            You'll be the root of this family tree
+                            You&apos;ll be the root of this family tree
                           </p>
                         </div>
                       )}
@@ -344,6 +360,7 @@ export default function TreeDetailPage() {
                         setSelectedMember(member)
                         handleCenterOnMember(member.id)
                       }}
+                      onRelationshipAnalyze={handleRelationshipAnalyze}
                     />
 
                     {/* Floating Add Member Button */}
@@ -684,6 +701,17 @@ export default function TreeDetailPage() {
         allMembers={members}
         onSuccess={handleAddMemberSuccess}
       />
+
+      {/* Relationship Analyzer */}
+      {relationshipAnalyzerMembers && (
+        <RelationshipAnalyzer
+          open={relationshipAnalyzerOpen}
+          onOpenChange={setRelationshipAnalyzerOpen}
+          members={members}
+          treeId={treeId}
+          selectedMember={selectedMember}
+        />
+      )}
     </DashboardLayout>
   )
 }

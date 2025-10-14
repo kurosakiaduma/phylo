@@ -81,7 +81,7 @@ export default function NewMemberPage() {
         process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8050/api'
 
       // Prepare payload (only include non-empty fields)
-      const payload: any = {
+      const payload: Partial<MemberFormData> = {
         name: formData.name.trim(),
       }
 

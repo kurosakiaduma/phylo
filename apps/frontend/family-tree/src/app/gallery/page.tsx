@@ -101,7 +101,7 @@ export default function GalleryPage() {
                 Select a Family Tree
               </CardTitle>
               <CardDescription>
-                Choose which family tree's gallery you'd like to view
+                Choose which family tree&apos;s gallery you&apos;d like to view
               </CardDescription>
             </CardHeader>
             <CardContent>
