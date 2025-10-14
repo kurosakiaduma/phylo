@@ -1,0 +1,1 @@
+self.__NEXT_FONT_MANIFEST='{"pages":{},"app":{"/mnt/win3/work/family_tree/apps/frontend/family-tree/src/app/layout":["static/media/215b7dfa0255317a-s.p.woff2"]},"appUsingSizeAdjust":true,"pagesUsingSizeAdjust":false}';

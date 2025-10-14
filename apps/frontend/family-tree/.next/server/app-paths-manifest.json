@@ -1,0 +1,23 @@
+{
+  "/gallery/page": "app/gallery/page.js",
+  "/events/page": "app/events/page.js",
+  "/invites/[token]/page": "app/invites/[token]/page.js",
+  "/page": "app/page.js",
+  "/trees/[id]/gallery/page": "app/trees/[id]/gallery/page.js",
+  "/trees/[id]/invites/page": "app/trees/[id]/invites/page.js",
+  "/trees/[id]/events/page": "app/trees/[id]/events/page.js",
+  "/(dashboard)/notifications/page": "app/(dashboard)/notifications/page.js",
+  "/trees/[id]/members/[memberId]/edit/page": "app/trees/[id]/members/[memberId]/edit/page.js",
+  "/(dashboard)/invites/page": "app/(dashboard)/invites/page.js",
+  "/trees/[id]/members/page": "app/trees/[id]/members/page.js",
+  "/trees/[id]/page": "app/trees/[id]/page.js",
+  "/trees/new/page": "app/trees/new/page.js",
+  "/(dashboard)/settings/page": "app/(dashboard)/settings/page.js",
+  "/trees/[id]/relationships/page": "app/trees/[id]/relationships/page.js",
+  "/trees/[id]/settings/page": "app/trees/[id]/settings/page.js",
+  "/trees/page": "app/trees/page.js",
+  "/(dashboard)/profile/page": "app/(dashboard)/profile/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/trees/[id]/members/new/page": "app/trees/[id]/members/new/page.js",
+  "/roadmap/page": "app/roadmap/page.js"
+}
